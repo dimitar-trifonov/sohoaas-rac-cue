@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "title": "SOHOAAS Workflow JSON Schema - PoC",
+  "description": "Minimalistic JSON schema for LLM-generated workflows",
+  "type": "object",
+  "required": [
+    "version",
+    "name",
+    "description", 
+    "steps",
+    "user_parameters",
+    "services"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Workflow version (semver format)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable workflow name"
+    },
+    "description": {
+      "type": "string", 
+      "description": "What the workflow does"
+    },
+
+    "steps": {
+      "type": "array",
+      "description": "Workflow steps",
+      "items": {
+        "$ref": "#/definitions/WorkflowStep"
+      }
+    },
+    "user_parameters": {
+      "type": "object",
+      "description": "User inputs needed (map by parameter name)",
+      "additionalProperties": {
+        "$ref": "#/definitions/UserParameter"
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Services used (map by service name)",
+      "additionalProperties": {
+        "$ref": "#/definitions/ServiceBinding"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "WorkflowStep": {
+      "type": "object",
+      "description": "Single workflow step",
+      "required": ["id", "name", "action", "parameters"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+          "description": "Unique step identifier"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable step name"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "gmail.send_email",
+            "docs.create_from_template", 
+            "drive.share_document",
+            "calendar.create_reminder"
+          ],
+          "description": "MCP tool name - must match exactly with MCP server tools"
+        },
+        "parameters": {
+          "type": "object",
+          "description": "MCP tool parameters - must align with MCP inputSchema",
+          "additionalProperties": {
+            "oneOf": [
+              {"type": "string"},
+              {"type": "number"},
+              {"type": "boolean"},
+              {
+                "type": "string",
+                "pattern": "^\\$\\{(user\\.|steps\\.).+\\}$",
+                "description": "Parameter reference: ${user.param} or ${steps.step_id.output}"
+              }
+            ]
+          },
+          "examples": [
+            {
+              "to": "recipient@example.com",
+              "subject": "Test Email",
+              "body": "${user.email_content}"
+            },
+            {
+              "template_id": "${user.template_id}",
+              "title": "New Document",
+              "replacements": {
+                "CLIENT_NAME": "${user.client_name}"
+              }
+            }
+          ]
+        },
+        "outputs": {
+          "type": "object",
+          "description": "Step outputs"
+        },
+        "depends_on": {
+          "type": "array",
+          "description": "Dependencies",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "UserParameter": {
+      "type": "object",
+      "description": "User input parameter",
+      "required": ["name", "type", "required", "description", "prompt"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Parameter name"
+        },
+        "type": {
+          "type": "string",
+          "description": "Data type"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Is required"
+        },
+        "description": {
+          "type": "string",
+          "description": "What it's for"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "User prompt"
+        }
+      }
+    },
+    "ServiceBinding": {
+      "type": "object",
+      "description": "Service connection",
+      "required": ["service", "oauth_scopes"],
+      "properties": {
+        "service": {
+          "type": "string",
+          "description": "Service name"
+        },
+        "oauth_scopes": {
+          "type": "array",
+          "description": "OAuth scopes",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0.0",
+      "name": "Send Daily Report Email",
+      "description": "Automated workflow to send daily reports via email",
+      "steps": [
+        {
+          "id": "send_report_email",
+          "name": "Send Daily Report",
+          "service": "gmail",
+          "action": "gmail.send_email",
+          "inputs": {
+            "to": "${user.recipient_email}",
+            "subject": "Daily Report - ${user.report_date}",
+            "body": "Please find attached the daily report for ${user.report_date}."
+          },
+          "outputs": {
+            "message_id": "sent_message_id"
+          },
+          "depends_on": []
+        }
+      ],
+      "user_parameters": [
+        {
+          "name": "recipient_email",
+          "type": "string",
+          "required": true,
+          "description": "Email address of the report recipient",
+          "prompt": "Enter recipient email address:",
+          "validation": {
+            "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+          }
+        },
+        {
+          "name": "report_date",
+          "type": "string",
+          "required": true,
+          "description": "Date for the report",
+          "prompt": "Enter report date (YYYY-MM-DD):",
+          "validation": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        }
+      ],
+      "services": {
+        "gmail": {
+          "service": "gmail",
+          "oauth_scopes": ["https://www.googleapis.com/auth/gmail.send"]
+        }
+      }
+    }
+  ]
+}

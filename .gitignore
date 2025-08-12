@@ -1,0 +1,27 @@
+# IDE files
+*.swp
+*.swo:w
+
+# env files
+.env
+mcp/server/.env
+app/backend/.env
+
+# node_modules, dist
+node_modules
+app/frontend/node_modules
+app/fronend/dist
+mcp/server/frontend/node_modules
+mcp/server/frontend/dist
+app/backend/internal/services/test_output
+app/backend/internal/services/workflows
+
+# genkit
+app/backend/genkit
+app/backend/.genkit
+
+# temporary files and folders
+generated_workflows/**
+workflow/**
+app/backend/workflows
+_windsurfrules

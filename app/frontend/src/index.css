@@ -1,0 +1,147 @@
+/* Design System CSS Variables for runtime theming */
+:root {
+  /* Professional color palette */
+  --color-primary-50: #eff6ff;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  
+  /* Typography scale */
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', Monaco, monospace;
+  
+  /* Spacing scale */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+  
+  /* Breakpoints for JavaScript usage */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+  --breakpoint-demo: 1920px;
+  --breakpoint-ultrawide: 2560px;
+}
+
+/* Smooth scrolling and better text rendering */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Focus management for accessibility */
+*:focus {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* Remove default button styles to use design system */
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Ensure consistent box-sizing */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* SOHOAAS Design System - Global Styles */
+
+/* === BASE LAYER === */
+@layer base {
+  /* Import Google Fonts for professional typography */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+/* === COMPONENT LAYER === */
+@layer components {
+  /* Legacy component classes for backward compatibility */
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-colors duration-200;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-100 text-gray-900 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors duration-200;
+  }
+
+  .form-input {
+    @apply block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-2;
+  }
+
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .status-pending {
+    @apply bg-warning-100 text-warning-800;
+  }
+
+  .status-running {
+    @apply bg-primary-100 text-primary-800;
+  }
+
+  .status-completed {
+    @apply bg-success-100 text-success-800;
+  }
+
+  .status-failed {
+    @apply bg-error-100 text-error-800;
+  }
+}
+
+/* === UTILITY LAYER === */
+@layer utilities {
+  /* Demo mode utilities for large screen presentations */
+  .demo-text-xs { @apply text-sm lg:text-base; }
+  .demo-text-sm { @apply text-base lg:text-lg; }
+  .demo-text-base { @apply text-lg lg:text-xl; }
+  .demo-text-lg { @apply text-xl lg:text-2xl; }
+  .demo-text-xl { @apply text-2xl lg:text-3xl; }
+  .demo-text-2xl { @apply text-3xl lg:text-4xl; }
+  .demo-text-3xl { @apply text-4xl lg:text-5xl; }
+  
+  /* Enhanced spacing for large screens */
+  .demo-space-y-4 > * + * { @apply mt-6 lg:mt-8; }
+  .demo-space-y-6 > * + * { @apply mt-8 lg:mt-12; }
+  .demo-space-y-8 > * + * { @apply mt-12 lg:mt-16; }
+  
+  /* Responsive padding utilities */
+  .demo-p-4 { @apply p-6 lg:p-8 xl:p-12; }
+  .demo-p-6 { @apply p-8 lg:p-12 xl:p-16; }
+  .demo-p-8 { @apply p-12 lg:p-16 xl:p-24; }
+}

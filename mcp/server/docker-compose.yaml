@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # RAC Service Proxy Backend (Go) - Now with MCP Protocol Support
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rac-service-proxy-backend
+    ports:
+      - "8080:8080"  # HTTP REST API and WebSocket MCP endpoint
+    environment:
+      - PORT=8080
+      - GIN_MODE=release
+      # Google OAuth2 credentials (loaded from .env file)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - OAUTH_REDIRECT_URL=${OAUTH_REDIRECT_URL}
+    env_file:
+      - .env
+    volumes:
+      # Mount source for development (optional)
+      - ./backend:/app/src:ro
+    networks:
+      - rac-service-proxy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # RAC Service Proxy Frontend (React) - Now with MCP Client Interface
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rac-service-proxy-frontend
+    ports:
+      - "3002:3002"
+    environment:
+      - REACT_APP_SERVICE_PROXY_URL=http://localhost:8080
+      - REACT_APP_MCP_WEBSOCKET_URL=ws://localhost:8080/mcp
+      - REACT_APP_ENV=production
+      - BACKEND_SERVICE_NAME=backend
+    # depends_on:
+    #   backend:
+    #     condition: service_healthy
+    networks:
+      - rac-service-proxy-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # Optional: Redis for caching (if needed)
+  redis:
+    image: redis:7-alpine
+    container_name: rac-service-proxy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - rac-service-proxy-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - redis
+
+  # Optional: PostgreSQL for persistent storage (if needed)
+  postgres:
+    image: postgres:15-alpine
+    container_name: rac-service-proxy-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=service_proxies
+      - POSTGRES_USER=proxy_user
+      - POSTGRES_PASSWORD=proxy_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rac-service-proxy-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxy_user -d service_proxies"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - postgres
+
+networks:
+  rac-service-proxy-network:
+    driver: bridge
+    name: rac-service-proxy-network
+
+volumes:
+  redis_data:
+    name: rac-service-proxy-redis-data
+  postgres_data:
+    name: rac-service-proxy-postgres-data

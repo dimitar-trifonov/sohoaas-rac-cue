@@ -1,0 +1,162 @@
+# SOHOAAS System Architecture
+
+This diagram shows the detailed system architecture and data flow through the SOHOAAS components.
+
+```mermaid
+graph TB
+    %% User Interface Layer
+    subgraph "User Interface"
+        UI1[OAuth Login Button]
+        UI2[Personal Capability Showcase]
+        UI3[Coach Me Button - Story Interface]
+        UI4[Direct Intent Chat]
+        UI5[Workflow Editor & Approval]
+        UI6[Execution Dashboard]
+    end
+    
+    %% Core System States
+    subgraph "Core System States"
+        S1[user_auth<br/>OAuth tokens & services]
+        S2[personal_capabilities<br/>Available automations]
+        S3[daily_story_coaching<br/>Story analysis]
+        S4[personal_chat<br/>Direct intent]
+        S5[workflow_intent<br/>Analyzed intent + parameters]
+        S6[generated_workflow<br/>RaC specification]
+        S7[workflow_validation<br/>Format & completeness check]
+        S8[rac_execution<br/>Deterministic execution]
+    end
+    
+    %% LLM Services
+    subgraph "LLM Services"
+        LLM1[Intent Analysis LLM<br/>Extract parameters & actions]
+        LLM2[Story Analysis LLM<br/>Identify automation opportunities]
+        LLM3[Workflow Generator LLM<br/>Create RaC specifications]
+        LLM4[Content Generation LLM<br/>Email/document content]
+    end
+    
+    %% MCP Integration Layer
+    subgraph "MCP Integration"
+        MCP1[Gmail MCP Server<br/>Email operations]
+        MCP2[Google Docs MCP Server<br/>Document operations]
+        MCP3[Google Calendar MCP Server<br/>Calendar operations]
+        MCP4[Other MCP Servers<br/>Extensible integrations]
+    end
+    
+    %% RaC Workflow Engine
+    subgraph "RaC Workflow Engine"
+        RAC1[RaC Validator<br/>Format & completeness]
+        RAC2[RaC Executor<br/>Deterministic execution]
+        RAC3[Parameter Manager<br/>Editable parameters]
+        RAC4[State Manager<br/>Workflow state tracking]
+    end
+    
+    %% External Services
+    subgraph "External Services"
+        EXT1[Google OAuth2<br/>Authentication]
+        EXT2[Gmail API<br/>Email service]
+        EXT3[Google Docs API<br/>Document service]
+        EXT4[Google Calendar API<br/>Calendar service]
+    end
+    
+    %% User Flow Connections
+    UI1 --> S1
+    S1 --> S2
+    UI2 --> S2
+    UI3 --> S3
+    UI4 --> S4
+    
+    %% Story Coaching Flow
+    S3 --> LLM2
+    LLM2 --> S3
+    
+    %% Intent Processing Flow
+    S4 --> LLM1
+    LLM1 --> S5
+    S5 --> LLM3
+    LLM3 --> S6
+    
+    %% Validation Flow
+    S6 --> RAC1
+    RAC1 --> S7
+    UI5 --> S7
+    
+    %% Execution Flow
+    S7 --> RAC2
+    RAC2 --> S8
+    UI6 --> S8
+    
+    %% MCP Integration
+    S1 -.->|OAuth Tokens| MCP1
+    S1 -.->|OAuth Tokens| MCP2
+    S1 -.->|OAuth Tokens| MCP3
+    
+    RAC2 --> MCP1
+    RAC2 --> MCP2
+    RAC2 --> MCP3
+    
+    MCP1 --> EXT2
+    MCP2 --> EXT3
+    MCP3 --> EXT4
+    
+    %% Parameter Management
+    RAC3 --> S8
+    S8 --> RAC4
+    
+    %% Content Generation
+    RAC2 --> LLM4
+    LLM4 --> RAC2
+    
+    %% OAuth Flow
+    UI1 --> EXT1
+    EXT1 --> S1
+    
+    %% Styling
+    classDef uiLayer fill:#e3f2fd
+    classDef stateLayer fill:#f1f8e9
+    classDef llmLayer fill:#fce4ec
+    classDef mcpLayer fill:#fff3e0
+    classDef racLayer fill:#f3e5f5
+    classDef extLayer fill:#eceff1
+    
+    class UI1,UI2,UI3,UI4,UI5,UI6 uiLayer
+    class S1,S2,S3,S4,S5,S6,S7,S8 stateLayer
+    class LLM1,LLM2,LLM3,LLM4 llmLayer
+    class MCP1,MCP2,MCP3,MCP4 mcpLayer
+    class RAC1,RAC2,RAC3,RAC4 racLayer
+    class EXT1,EXT2,EXT3,EXT4 extLayer
+```
+
+## Architecture Principles
+
+### 🏗️ **Layered Architecture**
+- **UI Layer**: User interaction components
+- **State Layer**: System state management
+- **LLM Layer**: AI processing services
+- **MCP Layer**: Service integration
+- **RaC Engine**: Workflow execution
+- **External Services**: Third-party APIs
+
+### 🔄 **Data Flow**
+1. **Authentication**: OAuth2 → Personal capabilities discovery
+2. **Intent Gathering**: Story coaching OR direct intent
+3. **Processing**: LLM analysis → Parameter extraction → RaC generation
+4. **Validation**: Format checking → User approval
+5. **Execution**: Deterministic RaC execution → MCP integration
+
+### 🎯 **Key Components**
+
+**RaC Workflow Engine**:
+- Validates generated workflows
+- Manages editable parameters
+- Executes workflows deterministically
+- Tracks execution state
+
+**MCP Integration**:
+- Personal OAuth token management
+- Service-specific operations
+- Extensible integration framework
+
+**LLM Services**:
+- Specialized LLMs for different tasks
+- Intent analysis and parameter extraction
+- Workflow generation and content creation

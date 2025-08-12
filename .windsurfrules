@@ -1,0 +1,149 @@
+package sohoaas
+
+// === Context (kept concise) ===
+SOHOAASContext: {
+  description: "Multi-Agent Workflow Automation — 4-agent PoC for Google Workspace"
+  stack: ["Golang","Genkit","OpenAI","MCP","CUE"]
+  architecture: "Personal Capabilities → Intent Gatherer → Intent Analyst → Workflow Generator"
+}
+
+// === Collaboration System (your original, tightened) ===
+CollaborationSystem: {
+  version: "1.1.0"
+  participants: ["dimitar","cascade"]
+
+  principles: [
+    "examine_existing_before_creating",
+    "precision_over_apparent_success",
+    "real_constraints_over_assumptions",
+    "critical_thinking_over_speed",
+    // merged additions
+    "plan_patch_prove_over_direct_write",
+    "schema_and_tests_over_confident_generation"
+  ]
+
+  tool_priorities: {
+    before_creating: ["view_line_range","view_file_outline","grep_search"]
+    must_before_create: ["view_line_range","grep_search","view_file_outline"]
+    never_predict: ["assume structure","create without examining"]
+    validation_required: "show exact schema + test impact"
+  }
+
+  context_focus: {
+    schemas: ["existing schemas","actual implementation","test data"]
+    architecture: ["RaC system.cue","existing patterns","deployment configs"]
+    integration: ["service interfaces","data formats","auth flows"]
+  }
+
+  validation_gates: [
+    "Does this match existing code structure?",
+    "Are field names consistent with implementation?",
+    "Will this ACTUALLY work with existing systems?"
+  ]
+
+  error_correction: {
+    on_assumption_mismatch: [
+      "acknowledge assumption explicitly",
+      "examine actual implementation",
+      "rebuild from real structure"
+    ]
+  }
+
+  efficiency_metrics: {
+    success: ["first_attempt_accuracy","minimal_corrections","real_constraints_respected"]
+    failure: ["assumption_predictions","multiple_correction_rounds","false_foundations"]
+  }
+
+  bindings: [{
+    type: "windsurf_rules"
+    technology: "cascade_ai"
+    deployment: {
+      platform: "windsurf_ide"
+      integration: "windsurfrules_file"
+      activation: "automatic_on_project_open"
+    }
+    config: {
+      memory_integration: "enabled"
+      rac_context_injection: "automatic"
+      critical_thinking_mode: "enforced"
+      consistency_validation: "strict"
+    }
+  }]
+}
+
+// === Agent Governance (RaC-aligned hard rails) ===
+AgentGovernance: {
+  version: "1.2.0"
+
+  // Edit Contract — no patch without plan+evidence+prove
+  edit_contract: {
+    steps: [
+      "plan: goal + impacted files + line ranges",
+      "evidence: grep/outline snippets (paths + 3–5 lines)",
+      "patch: minimal unified git diff",
+      "prove: schema conformity + tests to add/update"
+    ]
+    outputs_required: ["plan","evidence","patch","prove"]
+    refusal_if_missing: true
+  }
+
+  // Mandatory discovery before any generation
+  discovery: {
+    must_run: ["view_file_outline","grep_search","view_line_range"]
+    grep_queries: [
+      "TODO|FIXME",
+      "type .*Workflow|struct .*Workflow|interface .*Service",
+      "rac/|state/|events/|logic/|tests/"
+    ]
+    read_priority: ["rac/state/","rac/events/","rac/logic/","rac/tests/","README.md","bindings/","docs/"]
+    generate_blocked_until_discovery_complete: true
+  }
+
+  // RaC gates — schema + tests first
+  rac_gates: {
+    schema_first: true
+    tests_required: true
+    traceability_note: "Each change references matching .rac.yaml"
+  }
+
+  // Diff discipline — keep edits tiny and safe
+  diffs: {
+    mode: "minimal"
+    change_budget_lines: 60
+    allow_renames: false
+    protected_paths: ["rac/**","main.go","internal/auth/**","deploy/**"]
+    require_reason_on_touch_protected: true
+  }
+
+  // Guardrails
+  never_do: [
+    "create modules when equivalent exists",
+    "large refactors without request",
+    "delete tests without replacement",
+    "invent data structures contradicting schema"
+  ]
+
+  // Self-check
+  review_checklist: [
+    "Only planned files touched?",
+    "Fields/types match schema?",
+    "Tests added/updated and named?",
+    "Rollback trivial (single revertable diff)?"
+  ]
+
+  // Recovery & rollback
+  error_correction: {
+    on_assumption_mismatch: ["stop","fetch actual file/lines","replan","retry with minimal diff"]
+    rollback_policy: "If schema/tests fail, propose immediate revert diff"
+  }
+
+  // Behavioral nudges
+  metrics: {
+    success: ["first_attempt_accuracy","delta_lines_under_budget","tests_updated","schemas_referenced"]
+    failure: ["assumption_prediction","code_churn","refactors_without_issue"]
+    thresholds: { code_churn_max_lines: 60, refactors_without_issue: 0 }
+  }
+
+  // Commit message rubric (short)
+  commit_message_template: "feat(scope): one-line change\n\nWHY:\n- <constraint/bug>\nHOW:\n- <minimal diff>\nTESTS:\n- <added/updated>\nRAC:\n- <state/events/logic/tests>"
+}

@@ -1,0 +1,38 @@
+{
+  "gmail_send_email": {
+    "description": "Send an email via Gmail",
+    "example_args": {
+      "to": "recipient@example.com",
+      "subject": "Test Email from MCP",
+      "body": "This is a test email sent via the MCP protocol."
+    }
+  },
+  "docs_create_from_template": {
+    "description": "Create a Google Doc from a template",
+    "example_args": {
+      "template_id": "1234567890abcdef",
+      "title": "New Document from MCP",
+      "replacements": {
+        "{{CLIENT_NAME}}": "John Doe",
+        "{{PROJECT_NAME}}": "MCP Integration Project"
+      }
+    }
+  },
+  "drive_share_document": {
+    "description": "Share a document via Google Drive",
+    "example_args": {
+      "file_id": "1234567890abcdef",
+      "email": "collaborator@example.com",
+      "role": "writer"
+    }
+  },
+  "calendar_create_reminder": {
+    "description": "Create a calendar event/reminder",
+    "example_args": {
+      "title": "MCP Integration Meeting",
+      "description": "Discuss MCP protocol implementation",
+      "start_time": "2024-01-15T10:00:00Z",
+      "end_time": "2024-01-15T11:00:00Z"
+    }
+  }
+}

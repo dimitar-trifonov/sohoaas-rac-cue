@@ -1,0 +1,61 @@
+flowchart TD
+    %% Authentication & Setup
+    A[User Visits SOHOAAS] --> B[OAuth2 Login with Google]
+    B --> C[Personal Capability Discovery]
+    C --> D[Show Available Automations]
+    
+    %% Two Main Paths
+    D --> E{User Choice}
+    E -->|Execute Automation| F[Direct Intent Input]
+    E -->|Discover Opportunities| G[Coach Me - Tell Your Story]
+    
+    %% Coaching Path
+    G --> H[User Tells Daily Story]
+    H --> I[LLM Analyzes Story]
+    I --> J[Show Automation Suggestions]
+    J --> K{User Interested?}
+    K -->|Yes| F
+    K -->|No| D
+    
+    %% Intent Processing
+    F --> L[LLM Intent Analysis]
+    L --> M[Extract Parameters & MCP Bindings]
+    M --> N[Generate RaC Workflow]
+    N --> O[Workflow Format Validation]
+    
+    %% Validation Results
+    O --> P{Validation Result}
+    P -->|Issues Found| Q[Show Missing/Invalid Items]
+    Q --> R[Fix Issues]
+    R --> O
+    P -->|Valid| S[Show Generated Workflow]
+    
+    %% User Approval
+    S --> T[Demo Workflow with Test Data]
+    T --> U{User Approval}
+    U -->|Needs Changes| V[Edit Workflow Steps]
+    V --> S
+    U -->|Rejected| D
+    U -->|Approved| W[Workflow Ready for Execution]
+    
+    %% Execution Phase
+    W --> X[User Edits Parameters for This Run]
+    X --> Y[Execute RaC Workflow Deterministically]
+    Y --> Z[Show Execution Results]
+    Z --> AA{Run Again?}
+    AA -->|Yes, Same Workflow| X
+    AA -->|Yes, New Automation| D
+    AA -->|No| BB[End Session]
+    
+    %% Styling
+    classDef authFlow fill:#e1f5fe,stroke:#333,stroke-width:2px,color:#000
+    classDef coachFlow fill:#f3e5f5,stroke:#333,stroke-width:2px,color:#000
+    classDef intentFlow fill:#e8f5e8,stroke:#333,stroke-width:2px,color:#000
+    classDef validationFlow fill:#fff3e0,stroke:#333,stroke-width:2px,color:#000
+    classDef executionFlow fill:#fce4ec,stroke:#333,stroke-width:2px,color:#000
+    
+    class A,B,C,D authFlow
+    class G,H,I,J,K coachFlow
+    class F,L,M,N intentFlow
+    class O,P,Q,R,S,T,U,V validationFlow
+    class W,X,Y,Z,AA,BB executionFlow

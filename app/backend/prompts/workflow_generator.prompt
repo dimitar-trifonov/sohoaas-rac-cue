@@ -1,0 +1,143 @@
+---
+model: googleai/gemini-1.5-flash
+config:
+  temperature: 0.1
+  maxOutputTokens: 1500
+input:
+  schema:
+    type: object
+    properties:
+      user_input:
+        type: string
+      validated_intent:
+        type: object
+      available_services:
+        type: string
+output:
+  schema:
+    type: object
+    properties:
+      version:
+        type: string
+      name:
+        type: string
+      description:
+        type: string
+      steps:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            service:
+              type: string
+            action:
+              type: string
+            inputs:
+              type: object
+            outputs:
+              type: object
+      user_parameters:
+        type: object
+        additionalProperties:
+          type: object
+          properties:
+            type:
+              type: string
+            required:
+              type: boolean
+            prompt:
+              type: string
+            validation:
+              type: object
+      services:
+        type: object
+        additionalProperties:
+          type: object
+          properties:
+            type:
+              type: string
+            oauth_scopes:
+              type: array
+              items:
+                type: string
+    required: ["version", "name", "description", "steps", "user_parameters", "services"]
+    additionalProperties: false
+---
+
+You are the SOHOAAS Workflow Generator. Generate JSON workflows from user intent.
+
+**SYSTEM SPECIFICATION** (Requirements-as-Code):
+The following CUE specification defines the complete system architecture, data flow, and requirements for workflow generation. Use this as authoritative context for understanding how workflows should be structured and what the system expects.
+
+{{.rac_context}}
+
+**TASK**: Convert user intent into executable JSON workflow following the schema above.
+
+**INPUT**:
+- User Request: {{.user_input}}
+- Intent Analysis: {{.validated_intent}}
+- Available Services: {{.available_services}}
+
+**OUTPUT REQUIREMENTS**:
+1. **JSON Only** - No explanations, no markdown
+2. **Schema Compliance** - Must match workflow_json_schema.json
+3. **Service Validation** - Use only available services
+4. **Field Names** - Use: version, name, description, steps, user_parameters, services
+
+**WORKFLOW STRUCTURE**:
+- **Steps**: Sequential service calls with dependencies
+- **User Parameters**: Dynamic values with prompts and validation
+- **Services**: OAuth2 bindings for Google Workspace services
+
+**EXAMPLE OUTPUT FORMAT**:
+
+{
+  "version": "1.0.0",
+  "name": "Email Automation",
+  "description": "Send automated emails",
+  "steps": [
+    {
+      "id": "send_email",
+      "name": "Send Email",
+      "service": "gmail",
+      "action": "gmail.send_email",
+      "parameters": {
+        "to": "${user.recipient}",
+        "subject": "${user.subject}",
+        "body": "${user.message}"
+      },
+      "depends_on": [],
+      "timeout": "30s"
+    }
+  ],
+  "user_parameters": {
+    "recipient": {
+      "type": "string",
+      "required": true,
+      "prompt": "Enter recipient email:",
+      "validation": "email"
+    },
+    "subject": {
+      "type": "string",
+      "required": true,
+      "prompt": "Enter email subject:"
+    },
+    "message": {
+      "type": "string",
+      "required": true,
+      "prompt": "Enter email message:"
+    }
+  },
+  "services": {
+    "gmail": {
+      "service": "gmail",
+      "oauth_scopes": ["https://www.googleapis.com/auth/gmail.send"]
+    }
+  }
+}
+
+Generate the JSON workflow now:

@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # MCP Service - OAuth2 and Google Workspace API proxy
+  mcp-service:
+    build:
+      context: ./mcp/server/backend
+      dockerfile: Dockerfile
+    container_name: sohoaas-mcp
+    ports:
+      - "${MCP_PORT:-8080}:8080"
+    environment:
+      - PORT=${MCP_PORT:-8080}
+      - NODE_ENV=${MCP_NODE_ENV:-production}
+      - MCP_SERVICE_NAME=${MCP_SERVICE_NAME:-google-workspace}
+      - LOG_LEVEL=${MCP_LOG_LEVEL:-info}
+      - GOOGLE_CLIENT_ID=${MCP_GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${MCP_GOOGLE_CLIENT_SECRET}
+      - OAUTH_REDIRECT_URL=${MCP_OAUTH_REDIRECT_URL:-http://localhost:3000/api/auth/callback}
+      - FRONTEND_URL=${MCP_FRONTEND_URL:-http://localhost:3000}
+    volumes:
+      # Mount .env file if it exists (for local development)
+      - ./mcp/server/.env:/app/.env:ro
+      # Persistent storage for MCP data
+      - mcp-data:/app/data
+    networks:
+      - sohoaas-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # SOHOAAS Backend - 5-agent workflow automation
+  sohoaas-backend:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: sohoaas-backend
+    ports:
+      - "${SOHOAAS_PORT:-8081}:8081"
+    environment:
+      - PORT=${SOHOAAS_PORT:-8081}
+      - GIN_MODE=${SOHOAAS_GIN_MODE:-release}
+      - MCP_SERVICE_URL=${SOHOAAS_MCP_SERVICE_URL:-http://mcp-service:8080}
+      - OPENAI_API_KEY=${SOHOAAS_OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${SOHOAAS_GOOGLE_API_KEY}
+      - GENKIT_ENV=${SOHOAAS_GENKIT_ENV:-production}
+      - GENKIT_REFLECTION_PORT=${SOHOAAS_GENKIT_REFLECTION_PORT:-3101}
+      - LOG_LEVEL=${SOHOAAS_LOG_LEVEL:-info}
+      - ENVIRONMENT=${SOHOAAS_ENVIRONMENT:-production}
+      - MCP_AUTH_ENDPOINT=${SOHOAAS_MCP_AUTH_ENDPOINT:-/api/auth/token}
+      - WORKFLOWS_DIR=${SOHOAAS_WORKFLOWS_DIR:-./generated_workflows}
+    volumes:
+      # Persistent storage for workflows and user data
+      - ./generated_workflows:/app/generated_workflows
+      - sohoaas-logs:/app/logs
+    depends_on:
+      mcp-service:
+        condition: service_healthy
+    networks:
+      - sohoaas-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # SOHOAAS Frontend - React app with nginx proxy
+  sohoaas-frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+    container_name: sohoaas-frontend
+    ports:
+      - "${SOHOAAS_NGINX_PORT:-3000}:3000"
+    environment:
+      - NGINX_PORT=${SOHOAAS_NGINX_PORT:-3000}
+      - MCP_SERVICE_URL=${SOHOAAS_MCP_SERVICE_URL:-http://mcp-service:8080}
+      - BACKEND_SERVICE_URL=${SOHOAAS_BACKEND_SERVICE_URL:-http://sohoaas-backend:8081}
+    depends_on:
+      mcp-service:
+        condition: service_healthy
+      sohoaas-backend:
+        condition: service_healthy
+    networks:
+      - sohoaas-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  sohoaas-network:
+    driver: bridge
+    name: sohoaas-network
+
+volumes:
+  # Persistent storage for MCP service data
+  mcp-data:
+    driver: local
+    name: sohoaas-mcp-data
+  
+  # Persistent storage for SOHOAAS workflows
+  sohoaas-workflows:
+    driver: local
+    name: sohoaas-workflows
+  
+  # Persistent storage for SOHOAAS logs
+  sohoaas-logs:
+    driver: local
+    name: sohoaas-logs

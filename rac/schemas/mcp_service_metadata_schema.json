@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "title": "SOHOAAS MCP Service Metadata Schema",
+  "description": "Validation schema for MCP service provider metadata - based on actual MCP server implementation structure",
+  "type": "object",
+  "required": [
+    "server_info",
+    "tools",
+    "capabilities"
+  ],
+  "properties": {
+    "server_info": {
+      "type": "object",
+      "description": "MCP server information - matches actual InitializeResult.ServerInfo structure",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "MCP server name (e.g., 'Workspace MCP Server', 'Office365 MCP Server')",
+          "examples": ["Workspace MCP Server", "Office365 MCP Server", "Slack MCP Server"]
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "MCP server version (semver format)"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "tools": {
+      "type": "array",
+      "description": "MCP tools array - matches actual getAvailableTools() structure",
+      "items": {
+        "$ref": "#/definitions/MCPTool"
+      },
+      "minItems": 1
+    },
+
+    "capabilities": {
+      "type": "object",
+      "description": "MCP server capabilities - matches actual ServerCapabilities structure",
+      "properties": {
+        "resources": {
+          "type": "object",
+          "properties": {
+            "subscribe": {"type": "boolean"},
+            "listChanged": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "tools": {
+          "type": "object",
+          "properties": {
+            "listChanged": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        },
+        "prompts": {
+          "type": "object",
+          "properties": {
+            "listChanged": {"type": "boolean"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "protocol_version": {
+      "type": "string",
+      "description": "MCP protocol version supported",
+      "default": "2024-11-05"
+    }
+  },
+  "additionalProperties": false,
+
+  "definitions": {
+    "MCPTool": {
+      "type": "object",
+      "description": "MCP Tool definition - matches actual Tool struct from types.go",
+      "required": ["name", "description", "inputSchema"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
+          "description": "MCP tool name - must use dot notation (service.action)",
+          "examples": [
+            "gmail.send_email",
+            "docs.create_from_template",
+            "drive.share_document",
+            "calendar.create_reminder"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Clear description of what this tool does"
+        },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema as map[string]interface{} - matches actual MCP server structure",
+          "required": ["type", "properties", "required"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["object"]
+            },
+            "properties": {
+              "type": "object",
+              "description": "Parameter definitions including 'token' for OAuth",
+              "patternProperties": {
+                "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+                  "type": "object",
+                  "properties": {
+                    "type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "enum": {"type": "array"},
+                    "format": {"type": "string"}
+                  },
+                  "required": ["type", "description"]
+                }
+              },
+              "additionalProperties": false
+            },
+            "required": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Must include 'token' for OAuth authentication",
+              "contains": {"const": "token"}
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "examples": [
+    {
+      "server_info": {
+        "name": "Workspace MCP Server",
+        "version": "1.0.0"
+      },
+      "protocol_version": "2024-11-05",
+      "capabilities": {
+        "resources": {
+          "subscribe": false,
+          "listChanged": false
+        },
+        "tools": {
+          "listChanged": false
+        }
+      },
+      "tools": [
+        {
+          "name": "gmail.send_email",
+          "description": "Send an email via Gmail",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string",
+                "description": "OAuth2 access token"
+              },
+              "to": {
+                "type": "string",
+                "description": "Recipient email address"
+              },
+              "subject": {
+                "type": "string",
+                "description": "Email subject"
+              },
+              "body": {
+                "type": "string",
+                "description": "Email body content"
+              }
+            },
+            "required": ["token", "to", "subject", "body"]
+          }
+        },
+        {
+          "name": "docs.create_from_template",
+          "description": "Create a Google Doc from a template",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "token": {
+                "type": "string",
+                "description": "OAuth2 access token"
+              },
+              "template_id": {
+                "type": "string",
+                "description": "Template document ID"
+              },
+              "title": {
+                "type": "string",
+                "description": "New document title"
+              },
+              "replacements": {
+                "type": "object",
+                "description": "Key-value pairs for template replacement"
+              }
+            },
+            "required": ["token", "template_id", "title"]
+          }
+        }
+      ]
+    }
+  ]
+}

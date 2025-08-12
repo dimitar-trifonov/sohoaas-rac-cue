@@ -1,0 +1,284 @@
+{
+  "providers": {
+    "workspace": {
+      "description": "Google Workspace services including Gmail, Docs, Drive, and Calendar",
+      "display_name": "Google Workspace",
+      "services": {
+        "calendar": {
+          "description": "Create, manage, and organize calendar events using Google Calendar API",
+          "display_name": "Google Calendar",
+          "functions": {
+            "create_event": {
+              "name": "create_event",
+              "display_name": "Create Event",
+              "description": "Create a new calendar event",
+              "example_payload": {
+                "attendees": [
+                  "client@example.com"
+                ],
+                "description": "Discuss project requirements",
+                "endTime": "2025-07-30T15:00:00Z",
+                "startTime": "2025-07-30T14:00:00Z",
+                "title": "Meeting with client"
+              },
+              "required_fields": [
+                "title",
+                "startTime",
+                "endTime"
+              ]
+            },
+            "delete_event": {
+              "name": "delete_event",
+              "display_name": "Delete Event",
+              "description": "Delete a calendar event",
+              "example_payload": {
+                "event_id": "event123456"
+              },
+              "required_fields": [
+                "event_id"
+              ]
+            },
+            "get_event": {
+              "name": "get_event",
+              "display_name": "Get Event",
+              "description": "Retrieve details of a specific calendar event",
+              "example_payload": {
+                "event_id": "event123456"
+              },
+              "required_fields": [
+                "event_id"
+              ]
+            },
+            "list_events": {
+              "name": "list_events",
+              "display_name": "List Events",
+              "description": "List calendar events within a time range",
+              "example_payload": {
+                "max_results": 10,
+                "time_max": "2025-07-31T00:00:00Z",
+                "time_min": "2025-07-30T00:00:00Z"
+              },
+              "required_fields": []
+            },
+            "update_event": {
+              "name": "update_event",
+              "display_name": "Update Event",
+              "description": "Update an existing calendar event",
+              "example_payload": {
+                "description": "Updated description",
+                "event_id": "event123456",
+                "title": "Updated meeting title"
+              },
+              "required_fields": [
+                "event_id"
+              ]
+            }
+          }
+        },
+        "docs": {
+          "description": "Create, edit, and manage documents using Google Docs API",
+          "display_name": "Google Docs",
+          "functions": {
+            "batch_update": {
+              "name": "batch_update",
+              "display_name": "Batch Update",
+              "description": "Perform multiple operations on a Google Docs document",
+              "example_payload": {
+                "document_id": "1234567890abcdef",
+                "requests": []
+              },
+              "required_fields": [
+                "document_id",
+                "requests"
+              ]
+            },
+            "create_document": {
+              "name": "create_document",
+              "display_name": "Create Document",
+              "description": "Create a new Google Docs document",
+              "example_payload": {
+                "title": "Test Document"
+              },
+              "required_fields": [
+                "title"
+              ]
+            },
+            "get_document": {
+              "name": "get_document",
+              "display_name": "Get Document",
+              "description": "Retrieve a Google Docs document by ID",
+              "example_payload": {
+                "document_id": "1234567890abcdef"
+              },
+              "required_fields": [
+                "document_id"
+              ]
+            },
+            "insert_text": {
+              "name": "insert_text",
+              "display_name": "Insert Text",
+              "description": "Insert text into a Google Docs document",
+              "example_payload": {
+                "content": "This is new text to insert",
+                "document_id": "1234567890abcdef",
+                "index": 1
+              },
+              "required_fields": [
+                "document_id",
+                "content"
+              ]
+            },
+            "update_document": {
+              "name": "update_document",
+              "display_name": "Update Document",
+              "description": "Update a Google Docs document with batch operations",
+              "example_payload": {
+                "document_id": "1234567890abcdef",
+                "requests": []
+              },
+              "required_fields": [
+                "document_id",
+                "requests"
+              ]
+            }
+          }
+        },
+        "drive": {
+          "description": "Store, share, and manage files using Google Drive API",
+          "display_name": "Google Drive",
+          "functions": {
+            "create_folder": {
+              "name": "create_folder",
+              "display_name": "Create Folder",
+              "description": "Create a new folder in Google Drive",
+              "example_payload": {
+                "name": "New Folder",
+                "parent_id": "root"
+              },
+              "required_fields": [
+                "name"
+              ]
+            },
+            "get_file": {
+              "name": "get_file",
+              "display_name": "Get File",
+              "description": "Retrieve file information from Google Drive",
+              "example_payload": {
+                "file_id": "1234567890abcdef"
+              },
+              "required_fields": [
+                "file_id"
+              ]
+            },
+            "list_files": {
+              "name": "list_files",
+              "display_name": "List Files",
+              "description": "List files and folders in Google Drive",
+              "example_payload": {
+                "folder_id": "root",
+                "page_size": 10
+              },
+              "required_fields": []
+            },
+            "move_file": {
+              "name": "move_file",
+              "display_name": "Move File",
+              "description": "Move a file to a different folder",
+              "example_payload": {
+                "file_id": "1234567890abcdef",
+                "new_parent_id": "0987654321fedcba"
+              },
+              "required_fields": [
+                "file_id",
+                "new_parent_id"
+              ]
+            },
+            "share_file": {
+              "name": "share_file",
+              "display_name": "Share File",
+              "description": "Share a file with another user",
+              "example_payload": {
+                "email": "user@example.com",
+                "file_id": "1234567890abcdef",
+                "role": "reader"
+              },
+              "required_fields": [
+                "file_id",
+                "email",
+                "role"
+              ]
+            },
+            "upload_file": {
+              "name": "upload_file",
+              "display_name": "Upload File",
+              "description": "Upload a file to Google Drive",
+              "example_payload": {
+                "content": "VGVzdCBmaWxlIGNvbnRlbnQ=",
+                "name": "test-file.txt",
+                "parent_id": "root"
+              },
+              "required_fields": [
+                "name",
+                "content"
+              ]
+            }
+          }
+        },
+        "gmail": {
+          "description": "Send, receive, and manage emails using Gmail API",
+          "display_name": "Gmail",
+          "functions": {
+            "get_message": {
+              "name": "get_message",
+              "display_name": "Get Email",
+              "description": "Retrieve a specific email message by ID",
+              "example_payload": {
+                "message_id": "1234567890abcdef"
+              },
+              "required_fields": [
+                "message_id"
+              ]
+            },
+            "list_messages": {
+              "name": "list_messages",
+              "display_name": "List Emails",
+              "description": "List email messages with optional filtering",
+              "example_payload": {
+                "max_results": 10,
+                "query": "is:unread"
+              },
+              "required_fields": []
+            },
+            "search_messages": {
+              "name": "search_messages",
+              "display_name": "Search Emails",
+              "description": "Search for emails in Gmail using query syntax",
+              "example_payload": {
+                "max_results": 10,
+                "query": "from:noreply@example.com"
+              },
+              "required_fields": [
+                "query"
+              ]
+            },
+            "send_message": {
+              "name": "send_message",
+              "display_name": "Send Email",
+              "description": "Send an email message via Gmail",
+              "example_payload": {
+                "body": "This is a test email from SOHOaaS",
+                "subject": "Test Email",
+                "to": "recipient@example.com"
+              },
+              "required_fields": [
+                "to",
+                "subject",
+                "body"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
