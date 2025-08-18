@@ -7,7 +7,8 @@ import (
 func TestCUEBuilder_BuildCUEFromJSON(t *testing.T) {
 	// Sample JSON workflow that the LLM might generate
 	jsonWorkflow := `{
-		"workflow_name": "Send Weekly Report Email",
+		"version": "1.0",
+		"name": "Weekly Report Automation",
 		"description": "Automatically send weekly reports to team members",
 		"trigger": {
 			"type": "manual"
@@ -17,31 +18,31 @@ func TestCUEBuilder_BuildCUEFromJSON(t *testing.T) {
 				"id": "send_report_email",
 				"name": "Send Weekly Report Email",
 				"service": "gmail",
-				"action": "gmail.send_email",
+				"action": "gmail.send_message",
 				"inputs": {
-					"to": "${USER_INPUT:recipient_email}",
+					"to": "${user.recipient_email}",
 					"subject": "Weekly Report - ${CURRENT_DATE}",
-					"body": "${USER_INPUT:report_content}"
+					"body": "${user.report_content}"
 				},
 				"outputs": {
 					"message_id": "string"
 				}
 			}
 		],
-		"user_parameters": [
-			{
+		"user_parameters": {
+			"recipient_email": {
 				"name": "recipient_email",
 				"type": "string",
 				"required": true,
 				"description": "Email address to send the report to"
 			},
-			{
+			"report_content": {
 				"name": "report_content",
 				"type": "string",
 				"required": true,
 				"description": "Content of the weekly report"
 			}
-		]
+		}
 	}`
 
 	// Create CUE builder (with nil MCP service for testing)
@@ -62,7 +63,7 @@ func TestCUEBuilder_BuildCUEFromJSON(t *testing.T) {
 		"workflow: #DeterministicWorkflow & {",
 		`name: "Send Weekly Report Email"`,
 		`service: "gmail"`,
-		`action: "gmail.send_email"`,
+		`action: "gmail.send_message"`,
 		"user_parameters:",
 		"service_bindings:",
 	}

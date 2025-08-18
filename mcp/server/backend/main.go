@@ -140,7 +140,7 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 		currentToken = token
 
 		// Redirect back to frontend with success
-		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/?auth_success=true")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-success.html")
 	})
 
 	// OAuth2 callback endpoint for frontend route (alternative path)
@@ -151,15 +151,15 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 
 		// Handle OAuth error (user denied access, etc.)
 		if error != "" {
-			// Redirect back to frontend with error
-			c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/?auth_error="+error)
+			// Redirect to OAuth error page for popup communication
+			c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-error.html?error="+error)
 			return
 		}
 
 		// Verify state
 		if !oauthStates[state] {
-			// Redirect back to frontend with error
-			c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/?auth_error=invalid_state")
+			// Redirect to OAuth error page for popup communication
+			c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-error.html?error=invalid_state")
 			return
 		}
 		delete(oauthStates, state)
@@ -176,7 +176,7 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 		currentToken = token
 
 		// Redirect back to frontend with success
-		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/?auth_success=true")
+		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-success.html")
 	})
 
 	// Get current token endpoint

@@ -44,12 +44,12 @@ func New() *Config {
 		Port:         getEnv("PORT", "8080"),
 		Environment:  getEnv("ENVIRONMENT", "development"),
 		LogLevel:     getEnv("LOG_LEVEL", "info"),
-		WorkflowsDir: getEnv("WORKFLOWS_DIR", "./generated_workflows"),
+		WorkflowsDir: getEnv("ARTIFACT_OUTPUT_DIR", "./generated_workflows"),
 		OpenAI: OpenAIConfig{
-			APIKey: getEnv("GOOGLE_API_KEY", ""),
+			APIKey: getEnv("OPENAI_API_KEY", ""),
 		},
 		MCP: MCPConfig{
-			BaseURL:      getEnv("MCP_SERVICE_URL", "http://localhost:8080"),
+			BaseURL:      getEnv("MCP_SERVICE_URL", "http://localhost:3000"),
 			AuthEndpoint: getEnv("MCP_AUTH_ENDPOINT", "/api/auth/token"),
 		},
 		OAuth2: OAuth2Config{

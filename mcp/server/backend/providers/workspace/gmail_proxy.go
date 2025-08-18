@@ -183,10 +183,72 @@ func (p *GmailProxy) GetServiceMetadata() ServiceMetadata {
 				Description: "Send an email message via Gmail",
 				ExamplePayload: map[string]interface{}{
 					"to":      "recipient@example.com",
-					"subject": "Test Email",
-					"body":    "This is a test email from SOHOaaS",
+					"subject": "Test Subject",
+					"body":    "Test email body",
 				},
 				RequiredFields: []string{"to", "subject", "body"},
+				OutputSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Gmail send message response",
+					Properties: map[string]PropertySchema{
+						"message_id": {
+							Type:        "string",
+							Description: "Gmail message ID",
+						},
+						"thread_id": {
+							Type:        "string", 
+							Description: "Gmail thread ID",
+						},
+						"label_ids": {
+							Type:        "array",
+							Description: "Message label IDs",
+						},
+						"snippet": {
+							Type:        "string",
+							Description: "Message snippet",
+						},
+						"to": {
+							Type:        "string",
+							Description: "Recipient email address",
+						},
+						"subject": {
+							Type:        "string",
+							Description: "Email subject",
+						},
+						"status": {
+							Type:        "string",
+							Description: "Send status",
+						},
+						"sent_at": {
+							Type:        "string",
+							Description: "ISO timestamp when sent",
+						},
+						"api_duration_ms": {
+							Type:        "number",
+							Description: "API call duration in milliseconds",
+						},
+					},
+					Required: []string{"message_id", "thread_id", "status", "sent_at"},
+				},
+				ErrorSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Gmail send message error response",
+					Properties: map[string]PropertySchema{
+						"error_code": {
+							Type:        "string",
+							Description: "Error code",
+						},
+						"error_message": {
+							Type:        "string",
+							Description: "Error message",
+						},
+						"details": {
+							Type:        "object",
+							Description: "Additional error details",
+						},
+					},
+					Required: []string{"error_code", "error_message"},
+				},
 			},
 			GmailFunctionSearchMessages: {
 				Name:        GmailFunctionSearchMessages,

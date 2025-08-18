@@ -29,6 +29,7 @@ func NewExecutionEngine(mcpService *MCPService) *ExecutionEngine {
 }
 
 // ValidateWorkflowServices validates that all services in a workflow exist in the MCP service catalog
+// and validates output field references against MCP response schemas
 func (ee *ExecutionEngine) ValidateWorkflowServices(workflow *ParsedWorkflow) error {
 	if workflow == nil {
 		return fmt.Errorf("workflow is nil")
@@ -40,8 +41,152 @@ func (ee *ExecutionEngine) ValidateWorkflowServices(workflow *ParsedWorkflow) er
 		return fmt.Errorf("failed to query MCP service catalog for validation: %w", err)
 	}
 	
-	// Use centralized parser to validate workflow services
-	return ee.mcpParser.ValidateWorkflowServices(mcpServices, workflow)
+	// Validate workflow services against MCP catalog
+	if err := ee.validateWorkflowServicesInternal(mcpServices, workflow); err != nil {
+		return err
+	}
+	
+	// Validate output field references against MCP response schemas
+	return ee.validateOutputFieldReferences(mcpServices, workflow)
+}
+
+// validateWorkflowServicesInternal validates workflow services against MCP catalog
+// Supports both legacy map[string]interface{} and new *types.MCPServiceCatalog
+func (ee *ExecutionEngine) validateWorkflowServicesInternal(mcpCatalog interface{}, workflow *ParsedWorkflow) error {
+	servicesData, err := ee.mcpParser.ParseServicesFromCatalog(mcpCatalog)
+	if err != nil {
+		return err
+	}
+	
+	for i, step := range workflow.Steps {
+		// Validate service exists in MCP catalog
+		serviceData, exists := servicesData[step.Service]
+		if !exists {
+			return fmt.Errorf("unknown service '%s' in step %d (%s) - service not found in MCP catalog", step.Service, i, step.ID)
+		}
+		
+		// Handle strongly-typed service definition
+		if serviceDefinition, ok := serviceData.(types.MCPServiceDefinition); ok {
+			// Check if action exists in the service's functions
+			_, actionExists := serviceDefinition.Functions[step.Action]
+			if !actionExists {
+				return fmt.Errorf("unknown action '%s' for service '%s' in step %d (%s) - action not found in MCP catalog", step.Action, step.Service, i, step.ID)
+			}
+			continue
+		}
+		
+		// Fallback: Handle legacy map format for backward compatibility
+		serviceMap, ok := serviceData.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("invalid service data for '%s' in MCP catalog", step.Service)
+		}
+		
+		functions, ok := serviceMap["functions"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("no functions found for service '%s' in MCP catalog", step.Service)
+		}
+		
+		_, actionExists := functions[step.Action]
+		if !actionExists {
+			return fmt.Errorf("unknown action '%s' for service '%s' in step %d (%s) - action not found in MCP catalog", step.Action, step.Service, i, step.ID)
+		}
+	}
+	
+	return nil
+}
+
+// validateOutputFieldReferences validates that workflow step output references exist in MCP response schemas
+func (ee *ExecutionEngine) validateOutputFieldReferences(mcpCatalog *types.MCPServiceCatalog, workflow *ParsedWorkflow) error {
+	stepOutputRegex := regexp.MustCompile(`\$\{steps\.([^.]+)\.outputs\.([^}]+)\}`)
+	
+	// Build map of step ID to service/action for lookup
+	stepServiceMap := make(map[string]struct{service, action string})
+	for _, step := range workflow.Steps {
+		stepServiceMap[step.ID] = struct{service, action string}{step.Service, step.Action}
+	}
+	
+	// Check each step's parameters for output field references
+	for _, step := range workflow.Steps {
+		// Check all parameter values recursively
+		if err := ee.validateParameterOutputReferences(step.Inputs, stepOutputRegex, stepServiceMap, mcpCatalog); err != nil {
+			return fmt.Errorf("invalid output reference in step %s: %w", step.ID, err)
+		}
+	}
+	
+	return nil
+}
+
+// validateParameterOutputReferences recursively validates output field references in parameters
+func (ee *ExecutionEngine) validateParameterOutputReferences(params map[string]interface{}, stepOutputRegex *regexp.Regexp, stepServiceMap map[string]struct{service, action string}, mcpCatalog *types.MCPServiceCatalog) error {
+	for paramName, paramValue := range params {
+		switch v := paramValue.(type) {
+		case string:
+			// Check for step output references in string parameters
+			matches := stepOutputRegex.FindAllStringSubmatch(v, -1)
+			for _, match := range matches {
+				stepID := match[1]
+				outputField := match[2]
+				
+				// Get service and action for the referenced step
+				stepInfo, exists := stepServiceMap[stepID]
+				if !exists {
+					return fmt.Errorf("parameter %s references unknown step: %s", paramName, stepID)
+				}
+				
+				// Validate that the output field exists in the MCP function's output schema
+				if err := ee.validateOutputFieldExists(stepInfo.service, stepInfo.action, outputField, mcpCatalog); err != nil {
+					return fmt.Errorf("parameter %s references invalid output field %s.%s: %w", paramName, stepID, outputField, err)
+				}
+			}
+		case map[string]interface{}:
+			// Recursively validate nested objects
+			if err := ee.validateParameterOutputReferences(v, stepOutputRegex, stepServiceMap, mcpCatalog); err != nil {
+				return err
+			}
+		case []interface{}:
+			// Validate array elements
+			for i, item := range v {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if err := ee.validateParameterOutputReferences(itemMap, stepOutputRegex, stepServiceMap, mcpCatalog); err != nil {
+						return fmt.Errorf("array item %d: %w", i, err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateOutputFieldExists checks if an output field exists in the MCP function's output schema
+func (ee *ExecutionEngine) validateOutputFieldExists(service, action, outputField string, mcpCatalog *types.MCPServiceCatalog) error {
+	// Check if service exists
+	serviceDefinition, exists := mcpCatalog.Providers.Workspace.Services[service]
+	if !exists {
+		return fmt.Errorf("service '%s' not found in MCP catalog", service)
+	}
+	
+	// Check if function exists
+	functionSchema, exists := serviceDefinition.Functions[action]
+	if !exists {
+		return fmt.Errorf("function '%s' not found in service '%s'", action, service)
+	}
+	
+	// If no output schema defined, allow any field reference (backward compatibility)
+	if functionSchema.OutputSchema == nil || functionSchema.OutputSchema.Properties == nil {
+		log.Printf("[ExecutionEngine] validateOutputFieldExists: No output schema defined for %s.%s, allowing field reference: %s", service, action, outputField)
+		return nil
+	}
+	
+	// Check if the output field exists in the schema
+	if _, exists := functionSchema.OutputSchema.Properties[outputField]; !exists {
+		availableFields := make([]string, 0, len(functionSchema.OutputSchema.Properties))
+		for field := range functionSchema.OutputSchema.Properties {
+			availableFields = append(availableFields, field)
+		}
+		return fmt.Errorf("output field '%s' not found in %s.%s schema. Available fields: %v", outputField, service, action, availableFields)
+	}
+	
+	return nil
 }
 
 // ParameterContext holds all parameter values for workflow execution
@@ -75,7 +220,7 @@ type ResolvedStep struct {
 }
 
 // PrepareExecution analyzes a CUE workflow and creates an execution plan
-func (ee *ExecutionEngine) PrepareExecution(cueworkflow string, userID string, user *types.User, intentAnalysis map[string]interface{}, oauthToken string) (*ExecutionPlan, error) {
+func (ee *ExecutionEngine) PrepareExecution(cueworkflow string, userID string, user *types.User, intentAnalysis map[string]interface{}, oauthToken string, userTimezone string) (*ExecutionPlan, error) {
 	// Parse the CUE workflow (simplified - would use actual CUE parser in production)
 	workflow, err := ee.ParseCUEWorkflow(cueworkflow)
 	if err != nil {
@@ -88,7 +233,7 @@ func (ee *ExecutionEngine) PrepareExecution(cueworkflow string, userID string, u
 	}
 
 	// Create parameter context from intent analysis and user data
-	paramContext := ee.createParameterContext(intentAnalysis, user, oauthToken)
+	paramContext := ee.createParameterContext(intentAnalysis, user, oauthToken, userTimezone)
 
 	// Resolve all parameters in workflow steps
 	resolvedSteps, validationErrors := ee.resolveWorkflowParameters(workflow.Steps, paramContext)
@@ -106,7 +251,7 @@ func (ee *ExecutionEngine) PrepareExecution(cueworkflow string, userID string, u
 }
 
 // createParameterContext builds the parameter context from various sources
-func (ee *ExecutionEngine) createParameterContext(intentAnalysis map[string]interface{}, user *types.User, oauthToken string) *ParameterContext {
+func (ee *ExecutionEngine) createParameterContext(intentAnalysis map[string]interface{}, user *types.User, oauthToken string, userTimezone string) *ParameterContext {
 	context := &ParameterContext{
 		UserParameters:    make(map[string]interface{}),
 		RuntimeParameters: make(map[string]interface{}),
@@ -115,13 +260,26 @@ func (ee *ExecutionEngine) createParameterContext(intentAnalysis map[string]inte
 	}
 
 	// Extract user parameters from intent analysis
+	// Handle both array format (legacy) and map format (current standard)
 	if userParams, ok := intentAnalysis["user_parameters"].([]interface{}); ok {
+		// Legacy array format: [{"name": "param", "value": "val"}]
 		for _, param := range userParams {
 			if paramMap, ok := param.(map[string]interface{}); ok {
 				if name, exists := paramMap["name"].(string); exists {
-					// Set default values or collect from user input
 					context.UserParameters[name] = ee.resolveUserParameter(paramMap, user)
 				}
+			}
+		}
+	} else if userParamsMap, ok := intentAnalysis["user_parameters"].(map[string]interface{}); ok {
+		// Current map format: {"param_name": "param_value"}
+		for paramName, paramValue := range userParamsMap {
+			context.UserParameters[paramName] = paramValue
+		}
+	} else {
+		// Direct parameter map (when intentAnalysis IS the user parameters)
+		for key, value := range intentAnalysis {
+			if key != "user_parameters" {
+				context.UserParameters[key] = value
 			}
 		}
 	}
@@ -132,6 +290,7 @@ func (ee *ExecutionEngine) createParameterContext(intentAnalysis map[string]inte
 	context.SystemParameters["user_email"] = user.Email
 	context.SystemParameters["user_id"] = user.ID
 	context.SystemParameters["oauth_token"] = oauthToken
+	context.SystemParameters["user_timezone"] = userTimezone
 
 	return context
 }
@@ -151,7 +310,7 @@ func (ee *ExecutionEngine) resolveUserParameter(paramDef map[string]interface{},
 		if defaultVal, exists := paramDef["default"]; exists {
 			return defaultVal
 		}
-		return fmt.Sprintf("${USER_INPUT:%s}", paramName)
+		return fmt.Sprintf("${user.%s}", paramName)
 	}
 }
 
@@ -198,10 +357,70 @@ func (ee *ExecutionEngine) resolveWorkflowParameters(steps []WorkflowStep, conte
 
 // resolveParameterValue resolves a single parameter value using various strategies
 func (ee *ExecutionEngine) resolveParameterValue(value interface{}, context *ParameterContext) (interface{}, error) {
-	if strValue, ok := value.(string); ok {
-		return ee.resolveStringParameter(strValue, context)
+	switch v := value.(type) {
+	case string:
+		// Handle parameter references in strings
+		resolved, err := ee.resolveStringParameter(v, context)
+		if err != nil {
+			return nil, err
+		}
+		
+		// Apply timezone conversion to resolved string values
+		if resolvedStr, ok := resolved.(string); ok && ee.isDateTimeValue(resolvedStr) {
+			if userTimezone, exists := context.SystemParameters["user_timezone"]; exists {
+				if timezone, ok := userTimezone.(string); ok && timezone != "" {
+					// If datetime doesn't have timezone info, add it using user's timezone
+					// Check for timezone offset indicators after the time part (not in date part)
+					// Look for + or - after position 19 (after "2025-08-18T10:00:00") or Z at the end
+					hasTimezoneOffset := false
+					if len(resolvedStr) > 19 { // "2025-08-18T10:00:00" is 19 chars
+						timezonePart := resolvedStr[19:] // Everything after the seconds
+						hasTimezoneOffset = strings.Contains(timezonePart, "+") || strings.Contains(timezonePart, "-")
+					}
+					hasTimezone := hasTimezoneOffset || strings.HasSuffix(resolvedStr, "Z")
+					
+					if !hasTimezone {
+						// Parse the datetime and add timezone
+						if parsedTime, err := time.Parse("2006-01-02T15:04:05", resolvedStr); err == nil {
+							// Load the user's timezone
+							if loc, err := time.LoadLocation(timezone); err == nil {
+								// Interpret the datetime as being in the user's timezone and format with offset
+								localTime := time.Date(parsedTime.Year(), parsedTime.Month(), parsedTime.Day(),
+									parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), parsedTime.Nanosecond(), loc)
+								return localTime.Format("2006-01-02T15:04:05-07:00"), nil
+							}
+						}
+					}
+				}
+			}
+		}
+		return resolved, nil
+	case map[string]interface{}:
+		// Recursively resolve nested objects
+		resolved := make(map[string]interface{})
+		for key, val := range v {
+			resolvedVal, err := ee.resolveParameterValue(val, context)
+			if err != nil {
+				return nil, err
+			}
+			resolved[key] = resolvedVal
+		}
+		return resolved, nil
+	case []interface{}:
+		// Recursively resolve arrays
+		resolved := make([]interface{}, len(v))
+		for i, val := range v {
+			resolvedVal, err := ee.resolveParameterValue(val, context)
+			if err != nil {
+				return nil, err
+			}
+			resolved[i] = resolvedVal
+		}
+		return resolved, nil
+	default:
+		// Return primitive values as-is
+		return value, nil
 	}
-	return value, nil
 }
 
 // resolveStringParameter resolves string parameters with various expression types
@@ -239,16 +458,85 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 		return time.Now().Format(goFormat), nil
 	}
 
-	// Handle user parameter references
-	if strings.HasPrefix(value, "${USER_INPUT:") && strings.HasSuffix(value, "}") {
-		paramName := strings.TrimSuffix(strings.TrimPrefix(value, "${USER_INPUT:"), "}")
-		if userValue, exists := context.UserParameters[paramName]; exists {
-			return userValue, nil
+	// Handle user parameter references (both pure and mixed with other text)
+	userParamRegex := regexp.MustCompile(`\$\{user\.([^}]+)\}`)
+	if userParamRegex.MatchString(value) {
+		// Replace all user parameter references in the string
+		result := userParamRegex.ReplaceAllStringFunc(value, func(match string) string {
+			paramName := userParamRegex.FindStringSubmatch(match)[1]
+			if userValue, exists := context.UserParameters[paramName]; exists {
+				return fmt.Sprintf("%v", userValue)
+			}
+			// Return original match if parameter not found (will cause validation error later)
+			return match
+		})
+		
+		// Check if any parameters were not resolved (still contain ${user.})
+		if strings.Contains(result, "${user.") {
+			// Extract unresolved parameter names for error reporting
+			unresolvedMatches := userParamRegex.FindAllStringSubmatch(value, -1)
+			var missingParams []string
+			for _, match := range unresolvedMatches {
+				paramName := match[1]
+				if _, exists := context.UserParameters[paramName]; !exists {
+					missingParams = append(missingParams, paramName)
+				}
+			}
+			if len(missingParams) > 0 {
+				return value, fmt.Errorf("user parameter %s not provided", strings.Join(missingParams, ", "))
+			}
 		}
-		return value, fmt.Errorf("user parameter %s not provided", paramName)
+		
+		return result, nil
 	}
 
-	// Handle system parameter references
+
+	// Handle step output references: ${steps.step_id.outputs.field}
+	stepOutputRegex := regexp.MustCompile(`\$\{steps\.([^.]+)\.outputs\.([^}]+)\}`)
+	if stepOutputRegex.MatchString(value) {
+		result := stepOutputRegex.ReplaceAllStringFunc(value, func(match string) string {
+			matches := stepOutputRegex.FindStringSubmatch(match)
+			stepID := matches[1]
+			outputField := matches[2]
+			
+			if stepOutputs, exists := context.StepOutputs[stepID]; exists {
+				if outputMap, ok := stepOutputs.(map[string]interface{}); ok {
+					if outputValue, exists := outputMap[outputField]; exists {
+						return fmt.Sprintf("%v", outputValue)
+					}
+				}
+			}
+			return match // Keep original if not found during execution
+		})
+		
+		// Only validate step output availability during actual execution, not pre-validation
+		// During validation phase, step outputs won't exist yet - this is expected
+		if strings.Contains(result, "${steps.") && len(context.StepOutputs) > 0 {
+			// Only check for missing outputs if we're in execution phase (StepOutputs populated)
+			unresolvedMatches := stepOutputRegex.FindAllStringSubmatch(value, -1)
+			var missingRefs []string
+			for _, match := range unresolvedMatches {
+				stepID := match[1]
+				outputField := match[2]
+				if stepOutputs, exists := context.StepOutputs[stepID]; exists {
+					if outputMap, ok := stepOutputs.(map[string]interface{}); ok {
+						if _, exists := outputMap[outputField]; !exists {
+							missingRefs = append(missingRefs, fmt.Sprintf("%s.%s", stepID, outputField))
+						}
+					}
+				} else {
+					missingRefs = append(missingRefs, fmt.Sprintf("%s.%s", stepID, outputField))
+				}
+			}
+			if len(missingRefs) > 0 {
+				return value, fmt.Errorf("step output reference %s not available", strings.Join(missingRefs, ", "))
+			}
+		}
+		
+		return result, nil
+	}
+
+	// Handle system parameter references: ${SYSTEM:param} format
 	if strings.HasPrefix(value, "${SYSTEM:") && strings.HasSuffix(value, "}") {
 		paramName := strings.TrimSuffix(strings.TrimPrefix(value, "${SYSTEM:"), "}")
 		if systemValue, exists := context.SystemParameters[paramName]; exists {
@@ -257,8 +545,61 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 		return value, fmt.Errorf("system parameter %s not available", paramName)
 	}
 
+	// Handle standard system parameter references: ${param_name} format
+	if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") && !strings.Contains(value, ".") {
+		paramName := strings.TrimSuffix(strings.TrimPrefix(value, "${"), "}")
+		if systemValue, exists := context.SystemParameters[paramName]; exists {
+			return systemValue, nil
+		}
+		// Return as-is if not found (might be a literal string)
+	}
+
+	// Handle datetime values that need timezone information for API calls
+	if ee.isDateTimeValue(value) {
+		if userTimezone, exists := context.SystemParameters["user_timezone"]; exists {
+			if timezone, ok := userTimezone.(string); ok && timezone != "" {
+				// If datetime doesn't have timezone info, add it using user's timezone
+				if !strings.Contains(value, "+") && !strings.Contains(value, "-") && !strings.HasSuffix(value, "Z") {
+					// Parse the datetime and add timezone
+					if parsedTime, err := time.Parse("2006-01-02T15:04:05", value); err == nil {
+						// Load the user's timezone
+						if loc, err := time.LoadLocation(timezone); err == nil {
+							// Interpret the datetime as being in the user's timezone and format with offset
+							localTime := time.Date(parsedTime.Year(), parsedTime.Month(), parsedTime.Day(),
+								parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), parsedTime.Nanosecond(), loc)
+							return localTime.Format("2006-01-02T15:04:05-07:00"), nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+
+
+	// No parameter substitution needed, return as-is
 	return value, nil
 }
+
+// isDateTimeValue checks if a string value looks like a datetime
+func (ee *ExecutionEngine) isDateTimeValue(value string) bool {
+	// Check if the value matches datetime patterns
+	datetimePatterns := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02T15:04:05-07:00",
+		"2006-01-02T15:04:05+07:00",
+	}
+	
+	for _, pattern := range datetimePatterns {
+		if _, err := time.Parse(pattern, value); err == nil {
+			return true
+		}
+	}
+	
+	return false
+}
+
 
 // WorkflowStep represents a step in the workflow (simplified CUE parsing)
 type WorkflowStep struct {
@@ -280,11 +621,14 @@ type ParsedWorkflow struct {
 
 // ParseCUEWorkflow parses a CUE workflow string using the CUE library (public for testing)
 func (ee *ExecutionEngine) ParseCUEWorkflow(cueContent string) (*ParsedWorkflow, error) {
+	// Sanitize CUE content to remove illegal characters
+	sanitizedContent := ee.sanitizeCUEContent(cueContent)
+	
 	// Create CUE context
 	ctx := cuecontext.New()
 	
-	// Parse the CUE content
-	value := ctx.CompileString(cueContent)
+	// Parse the CUE content (schema is already embedded in saved files)
+	value := ctx.CompileString(sanitizedContent)
 	if err := value.Err(); err != nil {
 		return nil, fmt.Errorf("failed to compile CUE content: %w", err)
 	}
@@ -348,7 +692,7 @@ func (ee *ExecutionEngine) ParseCUEWorkflow(cueContent string) (*ParsedWorkflow,
 			}
 		}
 		
-		// Extract service
+		// Extract service field first (if exists)
 		if serviceValue := stepValue.LookupPath(cue.ParsePath("service")); serviceValue.Exists() {
 			if service, err := serviceValue.String(); err != nil {
 				return nil, fmt.Errorf("failed to extract service from step %d: %w", len(steps), err)
@@ -357,18 +701,42 @@ func (ee *ExecutionEngine) ParseCUEWorkflow(cueContent string) (*ParsedWorkflow,
 			}
 		}
 		
-		// Extract action
+		// Extract action field
 		if actionValue := stepValue.LookupPath(cue.ParsePath("action")); actionValue.Exists() {
 			if action, err := actionValue.String(); err != nil {
 				return nil, fmt.Errorf("failed to extract action from step %d: %w", len(steps), err)
 			} else {
-				step.Action = action
+				// If action contains a dot and no service was set, split it
+				if step.Service == "" && strings.Contains(action, ".") {
+					parts := strings.SplitN(action, ".", 2)
+					if len(parts) == 2 {
+						step.Service = parts[0]  // e.g., "gmail"
+						step.Action = parts[1]   // e.g., "get_messages"
+					} else {
+						step.Action = action
+					}
+				} else {
+					step.Action = action
+				}
 			}
 		}
 		
-		// Extract inputs
-		if inputsValue := stepValue.LookupPath(cue.ParsePath("inputs")); inputsValue.Exists() {
-			inputsMap := make(map[string]interface{})
+		// Extract parameters/inputs (try both "parameters" and "inputs" fields)
+		var inputsMap map[string]interface{}
+		if parametersValue := stepValue.LookupPath(cue.ParsePath("parameters")); parametersValue.Exists() {
+			inputsMap = make(map[string]interface{})
+			parametersIter, _ := parametersValue.Fields()
+			for parametersIter.Next() {
+				key := parametersIter.Label()
+				val := parametersIter.Value()
+				
+				// Convert CUE value to Go interface{}
+				if goVal, err := ee.cueValueToInterface(val); err == nil {
+					inputsMap[key] = goVal
+				}
+			}
+		} else if inputsValue := stepValue.LookupPath(cue.ParsePath("inputs")); inputsValue.Exists() {
+			inputsMap = make(map[string]interface{})
 			inputsIter, _ := inputsValue.Fields()
 			for inputsIter.Next() {
 				key := inputsIter.Label()
@@ -379,7 +747,9 @@ func (ee *ExecutionEngine) ParseCUEWorkflow(cueContent string) (*ParsedWorkflow,
 					inputsMap[key] = goVal
 				}
 			}
-			step.Inputs = inputsMap
+		}
+		if inputsMap != nil {
+			step.Inputs = inputsMap // Store in Inputs field for execution engine compatibility
 		}
 		
 		// Extract outputs (usually empty in workflow definition)
@@ -539,10 +909,24 @@ func (ee *ExecutionEngine) executeStep(step *ResolvedStep, context *ParameterCon
 	
 	log.Printf("[ExecutionEngine] executeStep: OAuth token found, calling MCP service...")
 	log.Printf("[ExecutionEngine] executeStep: Service=%s, Action=%s", step.Service, step.Action)
-	log.Printf("[ExecutionEngine] executeStep: Input parameters: %+v", step.Inputs)
+	log.Printf("[ExecutionEngine] executeStep: Input parameters (before resolution): %+v", step.Inputs)
 	
-	// Execute action via MCP service
-	response, err := ee.mcpService.ExecuteAction(step.Service, step.Action, step.Inputs, oauthToken)
+	// Resolve parameter references in step inputs at runtime
+	resolvedInputs, err := ee.resolveStepInputs(step.Inputs, context)
+	if err != nil {
+		log.Printf("[ExecutionEngine] executeStep: ERROR - Parameter resolution failed for step %s: %v", step.ID, err)
+		return fmt.Errorf("parameter resolution failed: %w", err)
+	}
+	log.Printf("[ExecutionEngine] executeStep: Input parameters (after resolution): %+v", resolvedInputs)
+	
+	// Log the resolved inputs being sent to MCP for debugging
+	log.Printf("[ExecutionEngine] executeStep: Sending parameters to MCP service %s.%s:", step.Service, step.Action)
+	for key, value := range resolvedInputs {
+		log.Printf("[ExecutionEngine] executeStep:   %s: %v", key, value)
+	}
+
+	// Execute the MCP action
+	response, err := ee.mcpService.ExecuteAction(step.Service, step.Action, resolvedInputs, oauthToken)
 	if err != nil {
 		log.Printf("[ExecutionEngine] executeStep: ERROR - MCP action execution failed for step %s: %v", step.ID, err)
 		return fmt.Errorf("MCP action execution failed: %w", err)
@@ -553,9 +937,16 @@ func (ee *ExecutionEngine) executeStep(step *ResolvedStep, context *ParameterCon
 	log.Printf("[ExecutionEngine] executeStep: Response data: %+v", response.Data)
 	log.Printf("[ExecutionEngine] executeStep: Response error: %s", response.Error)
 	
-	// Update step outputs with MCP response data
+	// Validate and update step outputs with MCP response data
 	if response.Data != nil {
 		log.Printf("[ExecutionEngine] executeStep: Updating step outputs with %d data fields", len(response.Data))
+		
+		// Validate response against expected output schema
+		if err := ee.validateResponseSchema(step.Service, step.Action, response.Data); err != nil {
+			log.Printf("[ExecutionEngine] executeStep: WARNING - Response schema validation failed for step %s: %v", step.ID, err)
+			// Continue execution but log validation warning for observability
+		}
+		
 		for key, value := range response.Data {
 			step.Outputs[key] = value
 			log.Printf("[ExecutionEngine] executeStep: Set output %s = %v", key, value)
@@ -570,12 +961,130 @@ func (ee *ExecutionEngine) executeStep(step *ResolvedStep, context *ParameterCon
 			stepOutputs[key] = value
 		}
 		log.Printf("[ExecutionEngine] executeStep: Updated context with step outputs for %s", step.ID)
+		log.Printf("[ExecutionEngine] executeStep: Available step outputs in context:")
+		for stepID, outputs := range context.StepOutputs {
+			if outputMap, ok := outputs.(map[string]interface{}); ok {
+				for outputKey, outputValue := range outputMap {
+					log.Printf("[ExecutionEngine] executeStep:   %s.%s = %v", stepID, outputKey, outputValue)
+				}
+			}
+		}
 	} else {
 		log.Printf("[ExecutionEngine] executeStep: No data returned from MCP service for step %s", step.ID)
 	}
 	
 	log.Printf("[ExecutionEngine] executeStep: Step %s execution completed successfully", step.ID)
 	return nil
+}
+
+// resolveStepInputs resolves parameter references in step inputs at runtime
+func (ee *ExecutionEngine) resolveStepInputs(inputs map[string]interface{}, context *ParameterContext) (map[string]interface{}, error) {
+	resolved := make(map[string]interface{})
+	
+	for key, value := range inputs {
+		resolvedValue, err := ee.resolveParameterValue(value, context)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve parameter %s: %w", key, err)
+		}
+		resolved[key] = resolvedValue
+	}
+	
+	return resolved, nil
+}
+
+// validateResponseSchema validates MCP response data against expected output schema
+func (ee *ExecutionEngine) validateResponseSchema(service, action string, responseData map[string]interface{}) error {
+	// Get MCP service catalog for validation
+	mcpCatalog, err := ee.mcpService.GetServiceCatalog()
+	if err != nil {
+		return fmt.Errorf("failed to get MCP catalog for response validation: %w", err)
+	}
+	
+	// Check if service exists
+	serviceDefinition, exists := mcpCatalog.Providers.Workspace.Services[service]
+	if !exists {
+		return fmt.Errorf("service '%s' not found in MCP catalog", service)
+	}
+	
+	// Check if function exists
+	functionSchema, exists := serviceDefinition.Functions[action]
+	if !exists {
+		return fmt.Errorf("function '%s' not found in service '%s'", action, service)
+	}
+	
+	// If no output schema defined, skip validation (backward compatibility)
+	if functionSchema.OutputSchema == nil || functionSchema.OutputSchema.Properties == nil {
+		log.Printf("[ExecutionEngine] validateResponseSchema: No output schema defined for %s.%s, skipping validation", service, action)
+		return nil
+	}
+	
+	// Validate response fields against output schema
+	var missingFields []string
+	var unexpectedFields []string
+	
+	// Check for expected fields in response
+	for expectedField := range functionSchema.OutputSchema.Properties {
+		if _, exists := responseData[expectedField]; !exists {
+			missingFields = append(missingFields, expectedField)
+		}
+	}
+	
+	// Check for unexpected fields in response (informational only)
+	for responseField := range responseData {
+		if _, exists := functionSchema.OutputSchema.Properties[responseField]; !exists {
+			unexpectedFields = append(unexpectedFields, responseField)
+		}
+	}
+	
+	// Log validation results for observability
+	if len(missingFields) > 0 {
+		log.Printf("[ExecutionEngine] validateResponseSchema: Missing expected fields for %s.%s: %v", service, action, missingFields)
+	}
+	if len(unexpectedFields) > 0 {
+		log.Printf("[ExecutionEngine] validateResponseSchema: Unexpected fields for %s.%s: %v", service, action, unexpectedFields)
+	}
+	
+	// Return error only for missing critical fields (non-blocking for PoC)
+	if len(missingFields) > 0 {
+		return fmt.Errorf("response missing expected fields: %v", missingFields)
+	}
+	
+	log.Printf("[ExecutionEngine] validateResponseSchema: Response schema validation passed for %s.%s", service, action)
+	return nil
+}
+
+
+
+// sanitizeCUEContent removes illegal characters and formatting from CUE content
+func (ee *ExecutionEngine) sanitizeCUEContent(cueContent string) string {
+	// Remove backticks that cause CUE parsing errors
+	sanitized := strings.ReplaceAll(cueContent, "`", "'")
+	
+	// Remove any markdown code block markers that might have been generated
+	sanitized = strings.ReplaceAll(sanitized, "```cue", "")
+	sanitized = strings.ReplaceAll(sanitized, "```", "")
+	
+	// Remove any other problematic characters that could cause CUE parsing issues
+	sanitized = strings.ReplaceAll(sanitized, "\u0060", "'") // Unicode backtick
+	
+	return sanitized
+}
+
+// removePackageDeclaration removes the package declaration from CUE content to avoid conflicts
+func (ee *ExecutionEngine) removePackageDeclaration(cueContent string) string {
+	lines := strings.Split(cueContent, "\n")
+	var filteredLines []string
+	
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Skip package declarations
+		if strings.HasPrefix(trimmed, "package ") {
+			continue
+		}
+		filteredLines = append(filteredLines, line)
+	}
+	
+	return strings.Join(filteredLines, "\n")
 }
 
 

@@ -162,6 +162,68 @@ func (p *CalendarProxy) GetServiceMetadata() ServiceMetadata {
 					"attendees":   []string{"client@example.com"},
 				},
 				RequiredFields: []string{"title", "startTime", "endTime"},
+				OutputSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Calendar event creation response",
+					Properties: map[string]PropertySchema{
+						"event_id": {
+							Type:        "string",
+							Description: "Google Calendar event ID",
+						},
+						"html_link": {
+							Type:        "string",
+							Description: "Event HTML link",
+						},
+						"title": {
+							Type:        "string",
+							Description: "Event title",
+						},
+						"description": {
+							Type:        "string",
+							Description: "Event description",
+						},
+						"start_time": {
+							Type:        "string",
+							Description: "Event start time",
+						},
+						"end_time": {
+							Type:        "string",
+							Description: "Event end time",
+						},
+						"status": {
+							Type:        "string",
+							Description: "Event status",
+						},
+						"created_at": {
+							Type:        "string",
+							Description: "ISO timestamp when created",
+						},
+						"updated_at": {
+							Type:        "string",
+							Description: "ISO timestamp when updated",
+						},
+					},
+					Required: []string{"event_id", "title", "start_time", "end_time", "status"},
+				},
+				ErrorSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Calendar event creation error response",
+					Properties: map[string]PropertySchema{
+						"error_code": {
+							Type:        "string",
+							Description: "Error code",
+						},
+						"error_message": {
+							Type:        "string",
+							Description: "Error message",
+						},
+						"details": {
+							Type:        "object",
+							Description: "Additional error details",
+						},
+					},
+					Required: []string{"error_code", "error_message"},
+				},
 			},
 			CalendarFunctionGetEvent: {
 				Name:        CalendarFunctionGetEvent,

@@ -1,4 +1,4 @@
-package agents
+package services
 
 import "../schemas.cue"
 
@@ -9,7 +9,7 @@ import "../schemas.cue"
 
 WorkflowExecutorService: {
     version: "1.0.0"
-    type: "execution_service"
+    type: "deterministic_service"
     poc_status: "essential" // Core value: Reliable step-by-step workflow execution
     
     // LAYER 1: REQUIREMENTS (What)
@@ -145,7 +145,7 @@ WorkflowExecutorService: {
                     description: "Resolve all step inputs from parameters and previous outputs"
                     action: "execution.prepare_inputs"
                     input_resolution: [
-                        "${USER_INPUT:param} → execution_parameters[param]",
+                        "${user.param} → execution_parameters[param]",
                         "$(step.outputs.field) → step_outputs[step][field]"
                     ]
                 },
@@ -227,7 +227,7 @@ WorkflowExecutorService: {
                             service: "gmail"
                             action: "send_message"
                             inputs: {
-                                to: "${USER_INPUT:recipient}"
+                                to: "${user.recipient}"
                                 subject: "Test Subject"
                                 body: "Test message body"
                             }

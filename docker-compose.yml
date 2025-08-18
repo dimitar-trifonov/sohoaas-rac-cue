@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MCP Service - OAuth2 and Google Workspace API proxy
   mcp-service:
@@ -36,8 +34,8 @@ services:
   # SOHOAAS Backend - 5-agent workflow automation
   sohoaas-backend:
     build:
-      context: ./app/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./app/backend/Dockerfile
     container_name: sohoaas-backend
     ports:
       - "${SOHOAAS_PORT:-8081}:8081"
@@ -52,11 +50,14 @@ services:
       - LOG_LEVEL=${SOHOAAS_LOG_LEVEL:-info}
       - ENVIRONMENT=${SOHOAAS_ENVIRONMENT:-production}
       - MCP_AUTH_ENDPOINT=${SOHOAAS_MCP_AUTH_ENDPOINT:-/api/auth/token}
-      - WORKFLOWS_DIR=${SOHOAAS_WORKFLOWS_DIR:-./generated_workflows}
+      - ARTIFACT_OUTPUT_DIR=${SOHOAAS_ARTIFACT_OUTPUT_DIR:-./generated_workflows}
+      - RAC_CONTEXT_PATH=${SOHOAAS_RAC_CONTEXT_PATH:-./rac}
     volumes:
       # Persistent storage for workflows and user data
       - ./generated_workflows:/app/generated_workflows
       - sohoaas-logs:/app/logs
+      # Mount RaC context files for Requirements-as-Code specifications
+      - ./rac:/app/rac:ro
     depends_on:
       mcp-service:
         condition: service_healthy

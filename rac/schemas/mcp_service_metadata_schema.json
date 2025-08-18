@@ -1,136 +1,160 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
-  "title": "SOHOAAS MCP Service Metadata Schema",
-  "description": "Validation schema for MCP service provider metadata - based on actual MCP server implementation structure",
+  "title": "SOHOAAS MCP Service Response Schema",
+  "description": "Validation schema for complete MCP service response - based on actual MCP server structure from localhost:8080/api/services",
   "type": "object",
-  "required": [
-    "server_info",
-    "tools",
-    "capabilities"
-  ],
+  "required": ["providers"],
   "properties": {
-    "server_info": {
+    "providers": {
       "type": "object",
-      "description": "MCP server information - matches actual InitializeResult.ServerInfo structure",
-      "required": ["name", "version"],
+      "required": ["workspace"],
       "properties": {
-        "name": {
-          "type": "string",
-          "description": "MCP server name (e.g., 'Workspace MCP Server', 'Office365 MCP Server')",
-          "examples": ["Workspace MCP Server", "Office365 MCP Server", "Slack MCP Server"]
-        },
-        "version": {
-          "type": "string",
-          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
-          "description": "MCP server version (semver format)"
+        "workspace": {
+          "type": "object",
+          "description": "Workspace provider containing all Google Workspace services",
+          "properties": {
+            "calendar": {
+              "$ref": "#/definitions/ServiceDefinition"
+            },
+            "docs": {
+              "$ref": "#/definitions/ServiceDefinition"
+            },
+            "drive": {
+              "$ref": "#/definitions/ServiceDefinition"
+            },
+            "gmail": {
+              "$ref": "#/definitions/ServiceDefinition"
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/ServiceDefinition"
+          }
         }
       },
-      "additionalProperties": false
-    },
-
-    "tools": {
-      "type": "array",
-      "description": "MCP tools array - matches actual getAvailableTools() structure",
-      "items": {
-        "$ref": "#/definitions/MCPTool"
-      },
-      "minItems": 1
-    },
-
-    "capabilities": {
-      "type": "object",
-      "description": "MCP server capabilities - matches actual ServerCapabilities structure",
-      "properties": {
-        "resources": {
-          "type": "object",
-          "properties": {
-            "subscribe": {"type": "boolean"},
-            "listChanged": {"type": "boolean"}
-          },
-          "additionalProperties": false
-        },
-        "tools": {
-          "type": "object",
-          "properties": {
-            "listChanged": {"type": "boolean"}
-          },
-          "additionalProperties": false
-        },
-        "prompts": {
-          "type": "object",
-          "properties": {
-            "listChanged": {"type": "boolean"}
-          },
-          "additionalProperties": false
+      "additionalProperties": {
+        "type": "object",
+        "description": "Additional providers (e.g., office365, slack)",
+        "additionalProperties": {
+          "$ref": "#/definitions/ServiceDefinition"
         }
-      },
-      "additionalProperties": false
-    },
-
-    "protocol_version": {
-      "type": "string",
-      "description": "MCP protocol version supported",
-      "default": "2024-11-05"
+      }
     }
   },
   "additionalProperties": false,
 
   "definitions": {
-    "MCPTool": {
+    "ServiceDefinition": {
       "type": "object",
-      "description": "MCP Tool definition - matches actual Tool struct from types.go",
-      "required": ["name", "description", "inputSchema"],
+      "description": "Google Workspace service definition - matches actual MCP server response structure",
+      "required": ["description", "display_name", "functions"],
       "properties": {
-        "name": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$",
-          "description": "MCP tool name - must use dot notation (service.action)",
-          "examples": [
-            "gmail.send_email",
-            "docs.create_from_template",
-            "drive.share_document",
-            "calendar.create_reminder"
-          ]
-        },
         "description": {
           "type": "string",
-          "minLength": 5,
-          "description": "Clear description of what this tool does"
+          "description": "Service description"
         },
-        "inputSchema": {
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable service name"
+        },
+        "functions": {
           "type": "object",
-          "description": "JSON Schema as map[string]interface{} - matches actual MCP server structure",
-          "required": ["type", "properties", "required"],
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": ["object"]
-            },
-            "properties": {
-              "type": "object",
-              "description": "Parameter definitions including 'token' for OAuth",
-              "patternProperties": {
-                "^[a-zA-Z_][a-zA-Z0-9_]*$": {
-                  "type": "object",
-                  "properties": {
-                    "type": {"type": "string"},
-                    "description": {"type": "string"},
-                    "enum": {"type": "array"},
-                    "format": {"type": "string"}
-                  },
-                  "required": ["type", "description"]
-                }
-              },
-              "additionalProperties": false
-            },
-            "required": {
-              "type": "array",
-              "items": {"type": "string"},
-              "description": "Must include 'token' for OAuth authentication",
-              "contains": {"const": "token"}
+          "description": "Available functions for this service",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": {
+              "$ref": "#/definitions/FunctionDefinition"
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "FunctionDefinition": {
+      "type": "object",
+      "description": "Function definition - matches actual MCP server response structure with response schemas",
+      "required": ["name", "display_name", "description", "example_payload", "required_fields"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Function name (matches key in functions object)"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable function name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Function description"
+        },
+        "example_payload": {
+          "type": "object",
+          "description": "Example parameters for this function",
+          "additionalProperties": true
+        },
+        "required_fields": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of required parameter names"
+        },
+        "output_schema": {
+          "$ref": "#/definitions/ResponseSchema",
+          "description": "Schema describing successful function response structure"
+        },
+        "error_schema": {
+          "$ref": "#/definitions/ResponseSchema",
+          "description": "Schema describing error response structure"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "ResponseSchema": {
+      "type": "object",
+      "description": "JSON Schema definition for function response (success or error)",
+      "required": ["type", "description", "properties"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["object"],
+          "description": "Schema type (always 'object' for MCP responses)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of the response"
+        },
+        "properties": {
+          "type": "object",
+          "description": "Response property definitions",
+          "patternProperties": {
+            "^[a-zA-Z][a-zA-Z0-9_]*$": {
+              "$ref": "#/definitions/PropertySchema"
+            }
+          },
+          "additionalProperties": false
+        },
+        "required": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "List of required response properties"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "PropertySchema": {
+      "type": "object",
+      "description": "Individual property schema definition",
+      "required": ["type", "description"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "array", "object"],
+          "description": "Property data type"
+        },
+        "description": {
+          "type": "string",
+          "description": "Property description"
         }
       },
       "additionalProperties": false
@@ -139,74 +163,86 @@
 
   "examples": [
     {
-      "server_info": {
-        "name": "Workspace MCP Server",
-        "version": "1.0.0"
-      },
-      "protocol_version": "2024-11-05",
-      "capabilities": {
-        "resources": {
-          "subscribe": false,
-          "listChanged": false
-        },
-        "tools": {
-          "listChanged": false
-        }
-      },
-      "tools": [
-        {
-          "name": "gmail.send_email",
-          "description": "Send an email via Gmail",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "token": {
-                "type": "string",
-                "description": "OAuth2 access token"
-              },
-              "to": {
-                "type": "string",
-                "description": "Recipient email address"
-              },
-              "subject": {
-                "type": "string",
-                "description": "Email subject"
-              },
-              "body": {
-                "type": "string",
-                "description": "Email body content"
+      "providers": {
+        "workspace": {
+          "gmail": {
+            "description": "Send, receive, and manage emails using Gmail API",
+            "display_name": "Gmail",
+            "functions": {
+              "send_message": {
+                "name": "send_message",
+                "display_name": "Send Email",
+                "description": "Send an email message via Gmail",
+                "example_payload": {
+                  "body": "This is a test email from SOHOaaS",
+                  "subject": "Test Email",
+                  "to": "recipient@example.com"
+                },
+                "required_fields": [
+                  "to",
+                  "subject",
+                  "body"
+                ],
+                "output_schema": {
+                  "type": "object",
+                  "description": "Gmail send message response",
+                  "properties": {
+                    "message_id": {
+                      "type": "string",
+                      "description": "Gmail message ID"
+                    },
+                    "thread_id": {
+                      "type": "string",
+                      "description": "Gmail thread ID"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Send status"
+                    },
+                    "sent_at": {
+                      "type": "string",
+                      "description": "ISO timestamp when sent"
+                    }
+                  },
+                  "required": ["message_id", "thread_id", "status", "sent_at"]
+                },
+                "error_schema": {
+                  "type": "object",
+                  "description": "Gmail send message error response",
+                  "properties": {
+                    "error_code": {
+                      "type": "string",
+                      "description": "Error code"
+                    },
+                    "error_message": {
+                      "type": "string",
+                      "description": "Error message"
+                    }
+                  },
+                  "required": ["error_code", "error_message"]
+                }
               }
-            },
-            "required": ["token", "to", "subject", "body"]
-          }
-        },
-        {
-          "name": "docs.create_from_template",
-          "description": "Create a Google Doc from a template",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "token": {
-                "type": "string",
-                "description": "OAuth2 access token"
-              },
-              "template_id": {
-                "type": "string",
-                "description": "Template document ID"
-              },
-              "title": {
-                "type": "string",
-                "description": "New document title"
-              },
-              "replacements": {
-                "type": "object",
-                "description": "Key-value pairs for template replacement"
+            }
+          },
+          "docs": {
+            "description": "Create, edit, and manage documents using Google Docs API",
+            "display_name": "Google Docs",
+            "functions": {
+              "create_document": {
+                "name": "create_document",
+                "display_name": "Create Document",
+                "description": "Create a new Google Docs document",
+                "example_payload": {
+                  "title": "Test Document"
+                },
+                "required_fields": [
+                  "title"
+                ]
               }
-            },
-            "required": ["token", "template_id", "title"]
+            }
           }
         }
-      ]
+      }
     }
   ]
 }

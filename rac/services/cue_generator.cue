@@ -1,4 +1,4 @@
-package agents
+package services 
 
 import "../schemas.cue"
 
@@ -86,16 +86,33 @@ CueGeneratorService: {
                     validation: "Must pass strict JSON schema validation before conversion"
                 },
                 {
-                    name: "apply_conversion_rules"
-                    description: "Transform JSON structure to CUE syntax"
-                    action: "converter.json_to_cue_transform"
+                    name: "convert_json_steps_to_cue"
+                    description: "Transform JSON workflow steps to CUE step format"
+                    action: "converter.json_steps_to_cue"
                     rules: [
-                        "workflow_name → name field",
-                        "steps array → CUE steps structure",
-                        "user_parameters → #UserParameter definitions",
-                        "service_bindings → #ServiceBinding definitions",
-                        "${USER_INPUT:param} → CUE variable syntax",
-                        "$(step.outputs.field) → CUE reference syntax"
+                        "step.action → CUE action field with MCP dot notation",
+                        "step.inputs → CUE inputs with parameter references",
+                        "step.outputs → CUE outputs with variable bindings",
+                        "${user.param} → CUE user parameter syntax"
+                    ]
+                },
+                {
+                    name: "convert_user_parameters_to_cue"
+                    description: "Transform JSON user parameters to CUE parameter definitions"
+                    action: "converter.json_params_to_cue"
+                    rules: [
+                        "parameter.type → CUE type constraint",
+                        "parameter.required → CUE required field",
+                        "parameter.validation → CUE validation rules"
+                    ]
+                },
+                {
+                    name: "convert_service_bindings_to_cue"
+                    description: "Transform JSON service bindings to CUE service configuration"
+                    action: "converter.json_services_to_cue"
+                    rules: [
+                        "service.oauth_scopes → CUE auth.scopes array",
+                        "service.service → CUE service binding name"
                     ]
                 },
                 {
@@ -104,9 +121,28 @@ CueGeneratorService: {
                     action: "cue.validate_syntax"
                 },
                 {
+                    name: "validate_mcp_functions"
+                    description: "Validate workflow steps use valid MCP service functions"
+                    action: "mcp.validate_functions"
+                    validation: "Each step.action must match existing MCP function"
+                },
+                {
+                    name: "validate_mcp_parameters"
+                    description: "Validate step parameters against MCP function schemas"
+                    action: "mcp.validate_parameters"
+                    validation: "Parameters must match MCP function input schema requirements"
+                },
+                {
+                    name: "validate_service_bindings"
+                    description: "Verify service bindings and OAuth configurations"
+                    action: "service.verify_bindings"
+                    validation: "Service bindings must have correct OAuth scopes and endpoints"
+                },
+                {
                     name: "validate_schema_compliance"
                     description: "Ensure CUE matches #DeterministicWorkflow schema"
                     action: "schema.validate_cue_workflow"
+                    schema_path: "/rac/schemas/deterministic_workflow.cue"
                 }
             ]
             output: {
@@ -133,7 +169,7 @@ CueGeneratorService: {
                             service: "gmail"
                             action: "send_message"
                             inputs: {
-                                to: "${USER_INPUT:recipient}"
+                                to: "${user.recipient}"
                                 subject: "Test Subject"
                                 body: "Test message"
                             }

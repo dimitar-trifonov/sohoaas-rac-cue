@@ -5,6 +5,20 @@ SOHOAASContext: {
   description: "Multi-Agent Workflow Automation — 4-agent PoC for Google Workspace"
   stack: ["Golang","Genkit","OpenAI","MCP","CUE"]
   architecture: "Personal Capabilities → Intent Gatherer → Intent Analyst → Workflow Generator"
+  
+  // Critical patterns from implementation history
+  workflow_pipeline: "workflow_generator → cue_generator → execution_engine"
+  parameter_authority: "MCP metadata → CUE workflows → JSON schemas"
+  execution_mode: "sequential" // PoC decision: no parallel complexity
+  
+  // Known implementation patterns
+  critical_fixes: [
+    "MCP function name alignment (gmail.send_message vs gmail.send_email)",
+    "Parameter reference standardization (${user.param} format)",
+    "CUE import path corrections (../../rac/schemas.cue)",
+    "Frontend-backend parameter format consistency",
+    "Workflow ID-based execution (not CUE content passing)"
+  ]
 }
 
 // === Collaboration System (your original, tightened) ===
@@ -93,7 +107,13 @@ AgentGovernance: {
     grep_queries: [
       "TODO|FIXME",
       "type .*Workflow|struct .*Workflow|interface .*Service",
-      "rac/|state/|events/|logic/|tests/"
+      "rac/|state/|events/|logic/|tests/",
+      // SOHOAAS-specific patterns
+      "AgentManager|ExecuteIntentGathererAgent|ExecuteWorkflowGeneratorAgent",
+      "MCPServiceCatalog|WorkflowStepValidation|ParameterReference",
+      "gmail\\.send_message|docs\\.create_document|drive\\.share_file|calendar\\.create_event",
+      "\\$\\{user\\.|\\$\\{steps\\.|\\$\\{computed\\.",
+      "workflow_generator\\.prompt|execution_engine\\.go|mcp_parser\\.go"
     ]
     read_priority: ["rac/state/","rac/events/","rac/logic/","rac/tests/","README.md","bindings/","docs/"]
     generate_blocked_until_discovery_complete: true
@@ -120,7 +140,13 @@ AgentGovernance: {
     "create modules when equivalent exists",
     "large refactors without request",
     "delete tests without replacement",
-    "invent data structures contradicting schema"
+    "invent data structures contradicting schema",
+    // SOHOAAS-specific guardrails
+    "use deprecated MCP function names (gmail.send_email, docs.create_from_template)",
+    "create parameter references without ${user.|${steps.|${computed. format",
+    "hardcode CUE import paths without checking actual file structure",
+    "pass workflow CUE content instead of workflow_id for execution",
+    "assume interface{} types without checking strongly-typed alternatives"
   ]
 
   // Self-check
@@ -128,7 +154,14 @@ AgentGovernance: {
     "Only planned files touched?",
     "Fields/types match schema?",
     "Tests added/updated and named?",
-    "Rollback trivial (single revertable diff)?"
+    "Rollback trivial (single revertable diff)?",
+    // SOHOAAS-specific validation
+    "MCP function names match actual server implementation?",
+    "Parameter references use standardized ${user.|${steps.|${computed. format?",
+    "CUE import paths verified against actual file locations?",
+    "Frontend-backend parameter format consistency maintained?",
+    "Workflow execution uses workflow_id not CUE content?",
+    "Type safety: strongly-typed structs used over interface{}?"
   ]
 
   // Recovery & rollback
@@ -144,6 +177,55 @@ AgentGovernance: {
     thresholds: { code_churn_max_lines: 60, refactors_without_issue: 0 }
   }
 
+  // --- RaC Source-of-Truth Wiring (compact) ---
+  RaCIndex: {
+    roots: ["rac/"]                                    // repo folder or submodule
+    schemas_manifest: "rac/schemas.cue"                // Core RaC schema definitions
+    include: [
+      "rac/system.cue",                                // Main 703-line system specification
+      "rac/agents/**/*.cue",                           // All 12 agent definitions
+      "rac/services/**/*.cue",                         // Deterministic services
+      "rac/schemas.cue",                               // Core RaC schemas (#State, #Event, #Logic, etc.)
+      "rac/schemas/**/*.cue",                          // CUE schema files
+      "rac/schemas/**/*.json",                         // JSON schemas (MCP, workflow validation)
+      "rac/tests/**/*.cue",                            // Test specifications and runner
+      "rac/observability/**/*.cue",                    // Agent logging schema
+      "rac/architecture.cue",                          // Architecture definitions
+      "rac/bindings.cue",                              // Deployment bindings
+      "rac/deployment.cue",                            // Deployment configuration
+      "rac/main.cue",                                  // Main entry point
+      "app/backend/prompts/**/*.prompt",               // LLM prompt templates
+      "bindings/**",
+      "docs/**",
+    ]
+  }
+
+  // Preflight: must read real RaC before any generation
+  PreflightHydration: {
+    require_files_from: RaCIndex.include
+    require_schema_manifest: RaCIndex.schemas_manifest
+    outputs: ["files_list","git_head","snippets"]
+  }
+
+  // Hard gates (hook into your existing AgentGovernance/rac_gates)
+  RaC_TruthGates: {
+    schema_first: true          // edits must cite exact schema file+key
+    tests_required: true        // name the test .rac.yaml to add/update
+    trace_ref: "RAC:<folder>/<file>#<id>"
+  }
+
+  StopUnlessGrounded: {
+    rule: "No edit without schema_ref AND test_ref AND file_snippet"
+    fallback: "ASK_USER with prompt_template above"
+  }
+
+  // Git sync safety
+  RepoSync: {
+    require_clean_worktree: true
+    require_remote_sync: "origin/main"
+    capture_commit: true        // include commit hash in 'evidence'
+  }  
+
   // Commit message rubric (short)
   commit_message_template: "feat(scope): one-line change\n\nWHY:\n- <constraint/bug>\nHOW:\n- <minimal diff>\nTESTS:\n- <added/updated>\nRAC:\n- <state/events/logic/tests>"
-}
+}  // Close AgentGovernance block

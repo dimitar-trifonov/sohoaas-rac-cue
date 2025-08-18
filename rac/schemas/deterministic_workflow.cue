@@ -7,6 +7,7 @@ package schemas
 	version:      string
 	name:         string
 	description?: string
+	original_intent?: string // User's original request for transparency
 
 	// 1. EXECUTION STEPS with services
 	steps: [...#WorkflowStep]
@@ -15,7 +16,7 @@ package schemas
 	user_parameters: [string]: #UserParameter
 
 	// 3. SERVICE BINDINGS (MCP connections)
-	services: [string]: #ServiceBinding
+	service_bindings: [string]: #ServiceBinding
 
 	// 4. EXECUTION CONFIGURATION (PoC: Sequential only)
 	execution_config?: #ExecutionConfig
@@ -30,12 +31,12 @@ package schemas
 	name: string
 
 	// MCP ALIGNMENT: action must match MCP tool name exactly
-	// Examples: "gmail.send_email", "docs.create_from_template", "drive.share_document"
-	action: string // MCP tool name (e.g., "gmail.send_email")
+	// Examples: "gmail.send_message", "docs.create_document", "drive.share_file"
+	action: string // MCP tool name (e.g., "gmail.send_message")
 
 	// Parameters must align with MCP tool inputSchema
 	// Structure: {parameter_name: value | reference | object}
-	parameters: [string]: string | #ParameterReference | {...}
+	parameters: [string]: string | int | bool | #ParameterReference | {...}
 
 	// What this step produces for subsequent steps (with schema)
 	outputs?: [string]: #StepOutput
@@ -59,7 +60,7 @@ package schemas
 }
 
 #UserParameter: {
-	type:         "string" | "number" | "boolean" | "array" | "object"
+	type:         "string" | "number" | "boolean" | "array" | "object" | "datetime" | "email"
 	required:     bool
 	prompt:       string
 	description?: string
@@ -104,7 +105,7 @@ package schemas
 }
 
 #ExecutionConfig: {
-	mode:         "sequential" | "parallel"
+	mode:         "sequential" // PoC: Sequential execution only
 	timeout?:     string
 	environment?: "development" | "staging" | "production"
 }
@@ -146,14 +147,9 @@ package schemas
 		{
 			id:     "create_document"
 			name:   "Create Document from Template"
-			action: "docs.create_from_template" // MCP tool name
+			action: "docs.create_document" // MCP tool name
 			parameters: {
-				template_id: "${user.template_id}"
-				title:       "${user.document_title}"
-				replacements: {
-					"{{CLIENT_NAME}}":  "${user.client_name}"
-					"{{PROJECT_NAME}}": "${user.project_name}"
-				}
+				title: "${user.document_title}"
 			}
 			outputs: {
 				document_id: {
@@ -171,7 +167,7 @@ package schemas
 		{
 			id:     "share_document"
 			name:   "Share Document with Collaborator"
-			action: "drive.share_document" // MCP tool name
+			action: "drive.share_file" // MCP tool name
 			parameters: {
 				file_id: "${steps.create_document.outputs.document_id}"
 				email:   "${user.collaborator_email}"
@@ -190,7 +186,7 @@ package schemas
 		{
 			id:     "send_notification"
 			name:   "Send Email Notification"
-			action: "gmail.send_email" // MCP tool name
+			action: "gmail.send_message" // MCP tool name
 			parameters: {
 				to:      "${user.collaborator_email}"
 				subject: "Document Ready: ${user.document_title}"
@@ -203,28 +199,21 @@ package schemas
 	]
 
 	user_parameters: {
-		folder_name: {
-			type:       "string"
-			required:   true
-			prompt:     "What should the folder be named?"
-			validation: "^[a-zA-Z0-9 _-]+$"
-			max_length: 100
-		}
 		document_title: {
 			type:       "string"
 			required:   true
 			prompt:     "What should the document be titled?"
 			max_length: 200
 		}
-		parent_folder_id: {
-			type:     "string"
-			required: false
-			default:  "root"
-			prompt:   "Which folder should contain this?"
+		collaborator_email: {
+			type:       "string"
+			required:   true
+			prompt:     "Email address to share with"
+			validation: "email"
 		}
 	}
 
-	services: {
+	service_bindings: {
 		drive: {
 			type:     "mcp_service"
 			provider: "workspace"

@@ -33,18 +33,33 @@ SOHOAASSystem: RacSystem & {
         
         authority_hierarchy: {
             level_1_authoritative: {
-                component: "MCP Server Service Metadata"
-                format: "MCP Tool definitions with inputSchema"
-                role: "Defines actual callable services, functions, and required parameters"
+                component: "MCP Server Response"
+                format: "Actual MCP service catalog response (PoC minimalistic)"
+                role: "Defines available services and functions from live MCP server endpoint"
                 example_structure: {
-                    tool_name: "gmail_send_email"  // MCP tool name format
-                    service_type: "gmail"          // Service identifier
-                    input_schema: {                // JSON Schema for parameters
-                        type: "object"
-                        properties: {
-                            to: {type: "string", required: true}
-                            subject: {type: "string", required: true}
-                            body: {type: "string", required: true}
+                    providers: {
+                        workspace: {
+                            description: "Google Workspace Provider"
+                            display_name: "Google Workspace"
+                            services: {
+                                gmail: {
+                                    description: "Send, receive, and manage emails using Gmail API"
+                                    display_name: "Gmail"
+                                    functions: {
+                                        send_message: {
+                                            name: "send_message"
+                                            display_name: "Send Email"
+                                            description: "Send an email message via Gmail"
+                                            example_payload: {
+                                                to: "recipient@example.com"
+                                                subject: "Test Email"
+                                                body: "This is a test email from SOHOaaS"
+                                            }
+                                            required_fields: ["to", "subject", "body"]
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -95,6 +110,48 @@ SOHOAASSystem: RacSystem & {
                 "tools[].inputSchema",
                 "capabilities"
             ]
+        }
+    }
+    
+    // SYSTEM ARCHITECTURE - MINIMALISTIC EVENT-DRIVEN DESIGN
+    // Critical architectural clarification for implementation alignment
+    system_architecture: {
+        design_philosophy: "minimalistic_event_driven"
+        description: "Agent Manager serves as central orchestrator without complex event infrastructure"
+        
+        event_system: {
+            type: "orchestrated_method_calls"
+            rationale: "PoC-appropriate implementation avoiding over-engineering"
+            implementation: "Direct method calls through Agent Manager ARE the event mechanism"
+            benefits: ["simple", "maintainable", "debuggable", "predictable_execution"]
+        }
+        
+        agent_coordination: {
+            orchestrator: "AgentManager"
+            communication_pattern: "hub_and_spoke"
+            isolation_principle: "agents communicate ONLY through Agent Manager"
+            state_management: "centralized in Agent Manager"
+            
+            event_flow: {
+                oauth_login: "GetPersonalCapabilities() → ExecutePersonalCapabilitiesAgent()"
+                message_received: "ProcessUserMessage() → ExecuteIntentGathererAgent()"
+                intent_analysis: "AnalyzeIntent() → ExecuteIntentAnalystAgent()"
+                workflow_generation: "GenerateWorkflow() → ExecuteWorkflowGeneratorAgent()"
+                workflow_validation: "ValidateWorkflow() → RaC-compliant validation methods"
+            }
+        }
+        
+        execution_model: {
+            mode: "sequential_only"  // PoC strategic decision
+            coordination: "consecutive_app_steps"
+            complexity: "minimal_for_poc_validation"
+            infrastructure: "no_event_bus_or_queue_needed"
+        }
+        
+        data_authority_implementation: {
+            mcp_catalog: "loadServiceCatalogFromMCP() maintains single source of truth"
+            service_isolation: "thread-safe catalog management with sync.RWMutex"
+            agent_initialization: "initializeAgents() sets up 4 core agents with proper isolation"
         }
     }
     
@@ -531,32 +588,6 @@ SOHOAASSystem: RacSystem & {
             }
         },
         {
-            id: "story_coaching_interface"
-            description: "Natural daily story coaching interface"
-            components: [
-                {
-                    type: "coach_me_button"
-                    fields: [
-                        { name: "label", type: "text", description: "Coach Me - Tell me about your day" },
-                        { name: "position", type: "text", description: "Always visible floating button" }
-                    ]
-                    submitEvent: "start_story_coaching"
-                },
-                {
-                    type: "story_chat_overlay"
-                    fields: [
-                        { name: "coach_prompt", type: "text", description: "Tell me about your typical Monday morning..." },
-                        { name: "user_story", type: "textarea", description: "User's daily routine story" },
-                        { name: "story_highlights", type: "list", description: "Key moments coach identified" },
-                        { name: "simple_suggestions", type: "list", description: "Easy automation ideas" }
-                    ]
-                }
-            ]
-            metadata: {
-                tags: ["coaching", "story", "natural", "overlay"]
-            }
-        },
-        {
             id: "guided_chat"
             description: "Chat interface with capability context"
             components: [{
@@ -656,43 +687,6 @@ SOHOAASSystem: RacSystem & {
                     }
                 }
                 expectError: "Action not supported in PoC"
-            },
-            {
-                id: "daily_story_coaching_flow"
-                description: "User tells daily story and discovers automation opportunities"
-                input: {
-                    event: "start_story_coaching"
-                    data: {
-                        user_id: "john@example.com"
-                    }
-                }
-                expected: {
-                    daily_story_coaching: {
-                        user_id: "john@example.com"
-                        status: "listening"
-                    }
-                }
-            },
-            {
-                id: "story_automation_analysis"
-                description: "Coach LLM analyzes user's daily story and suggests simple automations"
-                input: {
-                    event: "analyze_daily_story"
-                    data: {
-                        user_story: "Every Monday morning I get to the office, grab my coffee, and spend 2 hours going through weekend emails. I pull out project updates and try to remember what everyone was working on. Then I write a status report for my boss. After lunch, I usually follow up on proposals I sent last week - I have to search through my sent emails to find them and figure out who hasn't responded yet."
-                    }
-                }
-                expected: {
-                    daily_story_coaching: {
-                        status: "suggesting"
-                        story_highlights: ["Monday morning email review", "Status report creation", "Proposal follow-ups"]
-                        automation_suggestions: [
-                            "I can automatically scan your emails and create your Monday status report",
-                            "I can track your proposals and remind you about follow-ups",
-                            "I can organize your weekend emails by project"
-                        ]
-                    }
-                }
             }
         ]
         metadata: {

@@ -15,7 +15,7 @@ import type {
 class SOHOAASApiService {
   // Use environment variables for Docker deployment, fallback to localhost for development
   private readonly PROXY_BASE_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3000'
-  private readonly MCP_BASE_URL = import.meta.env.VITE_MCP_URL || 'http://localhost:3000'
+  private readonly MCP_BASE_URL = import.meta.env.VITE_MCP_URL || 'http://localhost:8080'
   private readonly BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081'
   
   // Authentication & Token Management
@@ -271,8 +271,8 @@ class SOHOAASApiService {
         validatedIntent = intentResult.agent_response.output
       }
 
-      // Step 2: Workflow Generation using validated intent
-      console.log('[API] Step 2: Generating workflow with validated intent...')
+      // Step 2: Workflow Generation using validated intent and original user input
+      console.log('[API] Step 2: Generating workflow with validated intent and user input...')
       const workflowResponse = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflow/generate`, {
         method: 'POST',
         headers: {
@@ -280,6 +280,7 @@ class SOHOAASApiService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          user_intent: userMessage,
           validated_intent: validatedIntent
         })
       })

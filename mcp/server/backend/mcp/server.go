@@ -416,7 +416,7 @@ func (s *MCPServer) getServiceFunctions(serviceType string) []map[string]interfa
 func (s *MCPServer) getAvailableTools() []Tool {
 	tools := []Tool{
 		{
-			Name:        "gmail.send_email",
+			Name:        "gmail.send_message",
 			Description: "Send an email via Gmail",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -442,7 +442,7 @@ func (s *MCPServer) getAvailableTools() []Tool {
 			},
 		},
 		{
-			Name:        "docs.create_from_template",
+			Name:        "docs.create_document",
 			Description: "Create a Google Doc from a template",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -468,7 +468,7 @@ func (s *MCPServer) getAvailableTools() []Tool {
 			},
 		},
 		{
-			Name:        "drive.share_document",
+			Name:        "drive.share_file",
 			Description: "Share a Google Drive document",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -495,7 +495,7 @@ func (s *MCPServer) getAvailableTools() []Tool {
 			},
 		},
 		{
-			Name:        "calendar.create_reminder",
+			Name:        "calendar.create_event",
 			Description: "Create a calendar reminder",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -512,16 +512,16 @@ func (s *MCPServer) getAvailableTools() []Tool {
 						"type":        "string",
 						"description": "Event description",
 					},
-					"start_time": map[string]interface{}{
+					"startTime": map[string]interface{}{
 						"type":        "string",
 						"description": "Start time in RFC3339 format",
 					},
-					"end_time": map[string]interface{}{
+					"endTime": map[string]interface{}{
 						"type":        "string",
 						"description": "End time in RFC3339 format",
 					},
 				},
-				"required": []string{"token", "title", "start_time", "end_time"},
+				"required": []string{"token", "title", "startTime", "endTime"},
 			},
 		},
 	}
@@ -625,42 +625,35 @@ func (s *MCPServer) executeToolViaWorkflow(ctx context.Context, service, functio
 		}, nil
 	}
 
-	// Format success response based on service type
-	var responseText string
-	switch service {
-	case "gmail":
-		if msgID, exists := stepResult.Data["message_id"]; exists {
-			responseText = fmt.Sprintf("Email sent successfully. Message ID: %v", msgID)
-		} else {
-			responseText = "Email operation completed successfully"
-		}
-	case "docs":
-		if docID, exists := stepResult.Data["document_id"]; exists {
-			responseText = fmt.Sprintf("Document operation completed successfully. Document ID: %v", docID)
-		} else {
-			responseText = "Document operation completed successfully"
-		}
-	case "drive":
-		if fileID, exists := stepResult.Data["file_id"]; exists {
-			responseText = fmt.Sprintf("Drive operation completed successfully. File ID: %v", fileID)
-		} else {
-			responseText = "Drive operation completed successfully"
-		}
-	case "calendar":
-		if eventID, exists := stepResult.Data["event_id"]; exists {
-			responseText = fmt.Sprintf("Calendar operation completed successfully. Event ID: %v", eventID)
-		} else {
-			responseText = "Calendar operation completed successfully"
-		}
-	default:
-		responseText = fmt.Sprintf("%s.%s completed successfully", service, function)
+	// Return structured JSON response with actual data
+	responseData := stepResult.Data
+	if responseData == nil {
+		responseData = make(map[string]interface{})
 	}
 
-	log.Printf("[MCP] %s.%s workflow SUCCESS", service, function)
+	// Ensure proper field names for each service
+	switch service {
+	case "drive":
+		// Map file_id to folder_id for create_folder action
+		if function == "create_folder" {
+			if fileID, exists := responseData["file_id"]; exists {
+				responseData["folder_id"] = fileID
+			}
+		}
+	}
+
+	// Convert response data to JSON string
+	responseJSON, err := json.Marshal(responseData)
+	if err != nil {
+		log.Printf("[MCP] Failed to marshal response data: %v", err)
+		responseJSON = []byte("{}")
+	}
+
+	log.Printf("[MCP] %s.%s workflow SUCCESS - Response: %s", service, function, string(responseJSON))
 	return ToolResult{
 		Content: []ToolContent{{
 			Type: "text",
-			Text: responseText,
+			Text: string(responseJSON),
 		}},
 		IsError: false,
 	}, nil

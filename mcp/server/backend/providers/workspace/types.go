@@ -18,6 +18,20 @@ type ProxyRequest struct {
 // Note: ProxyResponse, ProxyError, and ResponseMetadata types have been moved to the workflow package
 // for unified cross-provider compatibility. All workspace proxies now use workflow.ProxyResponse.
 
+// ResponseSchema represents the schema for function outputs and errors
+type ResponseSchema struct {
+	Type        string                           `json:"type"`
+	Description string                           `json:"description,omitempty"`
+	Properties  map[string]PropertySchema        `json:"properties,omitempty"`
+	Required    []string                         `json:"required,omitempty"`
+}
+
+// PropertySchema represents individual property schema
+type PropertySchema struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 // FunctionMetadata contains metadata about a service function
 type FunctionMetadata struct {
 	Name           string                 `json:"name"`
@@ -25,6 +39,9 @@ type FunctionMetadata struct {
 	Description    string                 `json:"description"`
 	ExamplePayload map[string]interface{} `json:"example_payload"`
 	RequiredFields []string               `json:"required_fields"`
+	// Response schema information for workflow generation
+	OutputSchema   *ResponseSchema        `json:"output_schema,omitempty"`
+	ErrorSchema    *ResponseSchema        `json:"error_schema,omitempty"`
 }
 
 // ServiceMetadata contains metadata about a service

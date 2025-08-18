@@ -11,14 +11,16 @@ export { useUIStore } from './uiStore'
 export const initializeStores = async () => {
   const { useAuthStore } = await import('./authStore')
   const { useServiceStore } = await import('./serviceStore')
+  const { useWorkflowStore } = await import('./workflowStore')
   
   // Initialize authentication
   await useAuthStore.getState().checkAuth()
   
-  // Load services if authenticated
+  // Load services and workflows if authenticated
   const { isAuthenticated } = useAuthStore.getState()
   if (isAuthenticated) {
     await useServiceStore.getState().refreshServices()
+    await useWorkflowStore.getState().loadWorkflows()
   }
 }
 

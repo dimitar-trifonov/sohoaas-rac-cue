@@ -33,35 +33,30 @@ func (m *MCPService) GetUserServices(userID, token string) ([]types.MCPService, 
 	log.Printf("[MCPService] Getting user services for user: %s", userID)
 	// For PoC: Use the working /api/services endpoint and return all services
 	// Since all services are available for all users
-	mcpServices, err := m.GetServiceCatalog()
+	catalog, err := m.GetServiceCatalog()
 	if err != nil {
 		log.Printf("[MCPService] ERROR: Failed to get service catalog for user %s: %v", userID, err)
 		return nil, fmt.Errorf("failed to get service catalog: %w", err)
 	}
 	
-	// Parse the MCP catalog structure: providers → workspace → services
-	providersWrapper, ok := mcpServices["providers"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid MCP catalog structure: missing providers")
-	}
-	
-	workspaceWrapper, ok := providersWrapper["workspace"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid MCP catalog structure: missing workspace")
-	}
-	
-	servicesMap, ok := workspaceWrapper["services"].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("invalid MCP catalog structure: missing services")
-	}
-	
 	// Convert to MCPService slice - all services available for user
 	var userServices []types.MCPService
-	for serviceName := range servicesMap {
+	for serviceName, serviceDefinition := range catalog.Providers.Workspace.Services {
+		// Convert functions from catalog to MCPFunction slice
+		var functions []types.MCPFunction
+		for functionName, functionSchema := range serviceDefinition.Functions {
+			functions = append(functions, types.MCPFunction{
+				Name:        functionName,
+				Description: functionSchema.Description,
+				Parameters:  functionSchema.ExamplePayload, // Use example payload as parameters
+				Required:    functionSchema.RequiredFields,
+			})
+		}
+		
 		userServices = append(userServices, types.MCPService{
 			Service:   serviceName,
-			Functions: []types.MCPFunction{}, // PoC: empty functions for now
-			Status:    "connected",           // PoC: assume all services are connected
+			Functions: functions,
+			Status:    "connected", // PoC: assume all services are connected
 			Metadata: map[string]interface{}{
 				"enabled": true,
 			},
@@ -72,7 +67,7 @@ func (m *MCPService) GetUserServices(userID, token string) ([]types.MCPService, 
 }
 
 // GetServiceCatalog retrieves the service catalog from MCP service
-func (m *MCPService) GetServiceCatalog() (map[string]interface{}, error) {
+func (m *MCPService) GetServiceCatalog() (*types.MCPServiceCatalog, error) {
 	url := m.baseURL + "/api/services"
 	log.Printf("[MCPService] === CALLING MCP SERVICE CATALOG ===")
 	log.Printf("[MCPService] MCP URL: %s", url)
@@ -90,14 +85,14 @@ func (m *MCPService) GetServiceCatalog() (map[string]interface{}, error) {
 		return nil, fmt.Errorf("MCP service catalog returned status %d", resp.StatusCode)
 	}
 	
-	var mcpServices map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&mcpServices); err != nil {
+	var catalog types.MCPServiceCatalog
+	if err := json.NewDecoder(resp.Body).Decode(&catalog); err != nil {
 		log.Printf("[MCPService] ERROR: Failed to decode MCP response: %v", err)
 		return nil, fmt.Errorf("failed to decode MCP service catalog: %w", err)
 	}
 	
-	log.Printf("[MCPService] SUCCESS: Retrieved MCP catalog with %d top-level keys", len(mcpServices))
-	return mcpServices, nil
+	log.Printf("[MCPService] SUCCESS: Retrieved MCP catalog with %d services", len(catalog.Providers.Workspace.Services))
+	return &catalog, nil
 }
 
 // ExecuteActionRequest represents a request to execute an MCP action
@@ -117,13 +112,26 @@ type ExecuteActionResponse struct {
 
 // ExecuteAction executes an action via the MCP service
 func (m *MCPService) ExecuteAction(service, action string, parameters map[string]interface{}, oauthToken string) (*ExecuteActionResponse, error) {
-	url := m.baseURL + "/api/v1/mcp/execute"
+	url := m.baseURL + "/api/mcp/tools/call"
 	
-	request := ExecuteActionRequest{
-		Service:    service,
-		Action:     action,
-		Parameters: parameters,
-		OAuthToken: oauthToken,
+	// Convert to MCP tools/call expected format
+	toolName := fmt.Sprintf("%s.%s", service, action)
+	arguments := make(map[string]interface{})
+	
+	// Add OAuth token to arguments
+	arguments["token"] = oauthToken
+	
+	// Add all parameters to arguments
+	for key, value := range parameters {
+		arguments[key] = value
+	}
+	
+	request := struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}{
+		Name:      toolName,
+		Arguments: arguments,
 	}
 	
 	log.Printf("[MCPService] === EXECUTING MCP ACTION ===")
@@ -173,24 +181,63 @@ func (m *MCPService) ExecuteAction(service, action string, parameters map[string
 	log.Printf("[MCPService] Response body length: %d bytes", len(responseBody))
 	log.Printf("[MCPService] Response body: %s", string(responseBody))
 	
-	// Parse response
-	var executeResponse ExecuteActionResponse
-	if err := json.Unmarshal(responseBody, &executeResponse); err != nil {
-		log.Printf("[MCPService] ERROR: Failed to decode MCP execute response: %v", err)
+	// Parse response from /api/mcp/tools/call
+	var toolResponse struct {
+		Result struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			IsError bool `json:"isError"`
+		} `json:"result"`
+	}
+	
+	if err := json.Unmarshal(responseBody, &toolResponse); err != nil {
+		log.Printf("[MCPService] ERROR: Failed to decode MCP tools/call response: %v", err)
 		log.Printf("[MCPService] Raw response: %s", string(responseBody))
-		return nil, fmt.Errorf("failed to decode MCP execute response: %w", err)
+		return nil, fmt.Errorf("failed to decode MCP tools/call response: %w", err)
 	}
 	
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("[MCPService] ERROR: MCP execute failed with status %d: %s", resp.StatusCode, executeResponse.Error)
-		return &executeResponse, fmt.Errorf("MCP execute failed with status %d: %s", resp.StatusCode, executeResponse.Error)
+		log.Printf("[MCPService] ERROR: MCP tools/call failed with status %d", resp.StatusCode)
+		return nil, fmt.Errorf("MCP tools/call failed with status %d", resp.StatusCode)
+	}
+	
+	// Convert tools/call response to ExecuteActionResponse
+	executeResponse := &ExecuteActionResponse{
+		Success: !toolResponse.Result.IsError,
+		Data:    make(map[string]interface{}),
+		Error:   "",
+	}
+	
+	// Extract content from response
+	if len(toolResponse.Result.Content) > 0 {
+		// If there's an error, extract error message
+		if toolResponse.Result.IsError {
+			executeResponse.Error = toolResponse.Result.Content[0].Text
+		} else {
+			// For successful responses, try to parse the result as JSON data
+			resultText := toolResponse.Result.Content[0].Text
+			log.Printf("[MCPService] Parsing result text: %s", resultText)
+			var resultData map[string]interface{}
+			if err := json.Unmarshal([]byte(resultText), &resultData); err == nil {
+				executeResponse.Data = resultData
+				log.Printf("[MCPService] Successfully parsed JSON data: %+v", resultData)
+			} else {
+				log.Printf("[MCPService] Failed to parse as JSON, storing as plain text: %v", err)
+				// If not JSON, store as plain text
+				executeResponse.Data = map[string]interface{}{
+					"result": resultText,
+				}
+			}
+		}
 	}
 	
 	if !executeResponse.Success {
-		log.Printf("[MCPService] ERROR: MCP execute returned success=false: %s", executeResponse.Error)
-		return &executeResponse, fmt.Errorf("MCP execute failed: %s", executeResponse.Error)
+		log.Printf("[MCPService] ERROR: MCP tool execution failed: %s", executeResponse.Error)
+		return executeResponse, fmt.Errorf("MCP tool execution failed: %s", executeResponse.Error)
 	}
 	
-	log.Printf("[MCPService] SUCCESS: MCP action executed successfully")
-	return &executeResponse, nil
+	log.Printf("[MCPService] SUCCESS: MCP tool executed successfully")
+	return executeResponse, nil
 }

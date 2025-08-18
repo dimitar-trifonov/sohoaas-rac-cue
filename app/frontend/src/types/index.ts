@@ -49,6 +49,7 @@ export interface UserParameter {
   required: boolean
   description: string
   prompt?: string
+  default?: any
   validation?: Record<string, any>
 }
 
@@ -73,6 +74,52 @@ export interface Workflow {
     type: 'schedule' | 'manual' | 'event'
     schedule?: string
     event?: string
+  }
+}
+
+// Extended type to handle both parsed Workflow and WorkflowFile from backend
+export type WorkflowOrFile = Workflow | {
+  id: string
+  name: string
+  description: string
+  status: string
+  filename: string
+  user_id: string
+  content: string
+  created_at: string
+  updated_at: string
+  user_message?: string
+  steps?: WorkflowStep[]
+  user_parameters?: UserParameter[]
+  service_bindings?: ServiceBinding[]
+  parsed_data?: {
+    name?: string
+    description?: string
+    version?: string
+    original_intent?: string
+    steps?: Array<{
+      id: string
+      name: string
+      action: string
+      parameters: Record<string, any>
+      depends_on?: string[]
+    }>
+    user_parameters?: Record<string, {
+      type: string
+      prompt?: string
+      required?: boolean
+      description?: string
+      validation?: any
+    }>
+    service_bindings?: Record<string, {
+      endpoint?: string
+      oauth_scopes?: string[]
+    }>
+    execution_config?: {
+      mode?: string
+      timeout?: string
+      environment?: string
+    }
   }
 }
 

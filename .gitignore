@@ -2,6 +2,10 @@
 *.swp
 *.swo:w
 
+# bianries
+app/backend/sohoaas-backend
+mcp/server/backend/mcp-server
+
 # env files
 .env
 mcp/server/.env
@@ -19,9 +23,12 @@ app/backend/internal/services/workflows
 # genkit
 app/backend/genkit
 app/backend/.genkit
+.genkit/**
 
 # temporary files and folders
 generated_workflows/**
+test_output/**
+test_verification/**
 workflow/**
 app/backend/workflows
-_windsurfrules
+windsurfrules.cue

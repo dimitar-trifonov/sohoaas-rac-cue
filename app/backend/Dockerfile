@@ -7,16 +7,18 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 # Set working directory
 WORKDIR /app
-COPY ./genkit ./genkit
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy genkit directory
+COPY ./app/backend/genkit ./genkit
+
+# Copy go mod files from backend directory
+COPY ./app/backend/go.mod ./app/backend/go.sum ./
 
 # Download dependencies
 RUN go mod download
 
-# Copy source code
-COPY . .
+# Copy backend source code
+COPY ./app/backend .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
@@ -43,7 +45,9 @@ COPY --from=builder /app/sohoaas-backend .
 
 # Copy configuration files and templates
 COPY --from=builder /app/prompts ./prompts/
-COPY --from=builder /app/workflows ./workflows/
+
+# Copy RaC context files (Requirements-as-Code specifications)
+COPY ./rac ./rac/
 
 # Create directories for runtime data with proper permissions
 RUN mkdir -p /app/generated_workflows /app/logs && \
@@ -58,6 +62,7 @@ ENV GIN_MODE=release
 ENV MCP_SERVICE_URL=http://mcp-service:8080
 ENV GENKIT_ENV=production
 ENV LOG_LEVEL=info
+ENV RAC_CONTEXT_PATH=./rac
 
 # Expose port
 EXPOSE 8081

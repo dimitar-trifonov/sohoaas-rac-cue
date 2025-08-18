@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -295,35 +294,27 @@ func containsStringInSlice(item string, slice []string) bool {
 	return false
 }
 
-// generateIntentAnalystTestFiles creates test files for debugging
+// generateIntentAnalystTestFiles creates test files using unified artifact storage
 func generateIntentAnalystTestFiles(t *testing.T, testName string, input map[string]interface{}, output map[string]interface{}) error {
-	// Create test directory
-	testDir := filepath.Join("test_output", "intent_analyst", fmt.Sprintf("%s_%d", testName, time.Now().Unix()))
-	if err := os.MkdirAll(testDir, 0755); err != nil {
-		return fmt.Errorf("failed to create test directory: %v", err)
-	}
-
-	// Save input
+	// Save input using unified artifact storage
 	inputJSON, err := json.MarshalIndent(input, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal input: %v", err)
 	}
-	inputFile := filepath.Join(testDir, "input.json")
-	if err := os.WriteFile(inputFile, inputJSON, 0644); err != nil {
-		return fmt.Errorf("failed to write input file: %v", err)
+	if err := saveTestArtifact(testName, "inputs", "input.json", string(inputJSON)); err != nil {
+		return fmt.Errorf("failed to save input artifact: %v", err)
 	}
 
-	// Save output
+	// Save output using unified artifact storage
 	outputJSON, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal output: %v", err)
 	}
-	outputFile := filepath.Join(testDir, "output.json")
-	if err := os.WriteFile(outputFile, outputJSON, 0644); err != nil {
-		return fmt.Errorf("failed to write output file: %v", err)
+	if err := saveTestArtifact(testName, "outputs", "output.json", string(outputJSON)); err != nil {
+		return fmt.Errorf("failed to save output artifact: %v", err)
 	}
 
-	// Generate test report
+	// Generate test report using unified artifact storage
 	report := fmt.Sprintf(`# Intent Analyst Test Report: %s
 
 **Generated:** %s
@@ -360,17 +351,16 @@ These files can be used to:
 		output["missing_info"],
 		output["next_action"])
 
-	reportFile := filepath.Join(testDir, "test_report.md")
-	if err := os.WriteFile(reportFile, []byte(report), 0644); err != nil {
-		return fmt.Errorf("failed to write test report: %v", err)
+	if err := saveTestArtifact(testName, "reports", "test_report.md", report); err != nil {
+		return fmt.Errorf("failed to save test report: %v", err)
 	}
 
-	t.Logf("✅ Intent Analyst test files generated: %s", testDir)
+	t.Logf("✅ Intent Analyst test files generated using unified storage")
 	return nil
 }
 
 // getStringFromMap safely extracts a string from nested map
-func getStringFromMap(data map[string]interface{}, path string) string {
+func getStringFromTestMap(data map[string]interface{}, path string) string {
 	if workflowIntent, ok := data["workflow_intent"].(*types.WorkflowIntent); ok {
 		return workflowIntent.UserMessage
 	}

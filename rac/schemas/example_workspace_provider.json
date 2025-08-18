@@ -1,266 +1,430 @@
 {
-  "provider_info": {
-    "name": "workspace",
-    "version": "1.0.0",
-    "description": "Google Workspace MCP Provider for SOHOAAS",
-    "service_types": ["gmail", "docs", "drive", "calendar"],
-    "auth_methods": ["oauth2"]
-  },
-  "tools": [
-    {
-      "name": "gmail.send_email",
-      "description": "Send an email via Gmail with support for CC/BCC recipients",
-      "serviceType": "gmail",
-      "function": "send_email",
-      "inputSchema": {
-        "type": "object",
-        "required": ["to", "subject", "body"],
-        "properties": {
-          "to": {
-            "type": "string",
-            "format": "email",
-            "description": "Primary recipient email address"
+  "providers": {
+    "workspace": {
+      "calendar": {
+        "description": "Create, manage, and organize calendar events using Google Calendar API",
+        "display_name": "Google Calendar",
+        "functions": {
+          "create_event": {
+            "name": "create_event",
+            "display_name": "Create Event",
+            "description": "Create a new calendar event",
+            "example_payload": {
+              "attendees": [
+                "client@example.com"
+              ],
+              "description": "Discuss project requirements",
+              "endTime": "2025-07-30T15:00:00Z",
+              "startTime": "2025-07-30T14:00:00Z",
+              "title": "Meeting with client"
+            },
+            "required_fields": [
+              "title",
+              "startTime",
+              "endTime"
+            ],
+            "output_schema": {
+              "type": "object",
+              "description": "Calendar event creation response",
+              "properties": {
+                "event_id": {
+                  "type": "string",
+                  "description": "Google Calendar event ID"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Event title"
+                },
+                "start_time": {
+                  "type": "string",
+                  "description": "Event start time"
+                },
+                "end_time": {
+                  "type": "string",
+                  "description": "Event end time"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Event status"
+                },
+                "html_link": {
+                  "type": "string",
+                  "description": "Event HTML link"
+                }
+              },
+              "required": ["event_id", "title", "start_time", "end_time", "status"]
+            },
+            "error_schema": {
+              "type": "object",
+              "description": "Calendar event creation error response",
+              "properties": {
+                "error_code": {
+                  "type": "string",
+                  "description": "Error code"
+                },
+                "error_message": {
+                  "type": "string",
+                  "description": "Error message"
+                },
+                "details": {
+                  "type": "object",
+                  "description": "Additional error details"
+                }
+              },
+              "required": ["error_code", "error_message"]
+            }
           },
-          "subject": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Email subject line"
+          "delete_event": {
+            "name": "delete_event",
+            "display_name": "Delete Event",
+            "description": "Delete a calendar event",
+            "example_payload": {
+              "event_id": "event123456"
+            },
+            "required_fields": [
+              "event_id"
+            ]
           },
-          "body": {
-            "type": "string",
-            "description": "Email body content (plain text or HTML)"
+          "get_event": {
+            "name": "get_event",
+            "display_name": "Get Event",
+            "description": "Retrieve details of a specific calendar event",
+            "example_payload": {
+              "event_id": "event123456"
+            },
+            "required_fields": [
+              "event_id"
+            ]
           },
-          "cc": {
-            "type": "array",
-            "items": {"type": "string", "format": "email"},
-            "description": "CC recipients"
+          "list_events": {
+            "name": "list_events",
+            "display_name": "List Events",
+            "description": "List calendar events within a time range",
+            "example_payload": {
+              "max_results": 10,
+              "time_max": "2025-07-31T00:00:00Z",
+              "time_min": "2025-07-30T00:00:00Z"
+            },
+            "required_fields": []
           },
-          "bcc": {
-            "type": "array", 
-            "items": {"type": "string", "format": "email"},
-            "description": "BCC recipients"
+          "update_event": {
+            "name": "update_event",
+            "display_name": "Update Event",
+            "description": "Update an existing calendar event",
+            "example_payload": {
+              "description": "Updated description",
+              "event_id": "event123456",
+              "title": "Updated meeting title"
+            },
+            "required_fields": [
+              "event_id"
+            ]
           }
-        },
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "message_id": {"type": "string", "description": "Gmail message ID"},
-          "thread_id": {"type": "string", "description": "Gmail thread ID"},
-          "sent_at": {"type": "string", "format": "date-time"}
         }
       },
-      "requiredFields": ["to", "subject", "body"],
-      "examplePayload": {
-        "to": "recipient@example.com",
-        "subject": "Document Ready for Review",
-        "body": "Hi! The document you requested has been created and is ready for your review.",
-        "cc": ["manager@example.com"]
-      },
-      "oauth_scopes": ["https://www.googleapis.com/auth/gmail.send"],
-      "rate_limits": {
-        "requests_per_minute": 100,
-        "requests_per_hour": 1000
-      },
-      "timeout": "30s"
-    },
-    {
-      "name": "docs.create_from_template",
-      "description": "Create a new Google Doc from an existing template with variable replacement",
-      "serviceType": "docs",
-      "function": "create_from_template",
-      "inputSchema": {
-        "type": "object",
-        "required": ["template_id", "title"],
-        "properties": {
-          "template_id": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$",
-            "description": "Google Docs template ID"
+      "docs": {
+        "description": "Create, edit, and manage documents using Google Docs API",
+        "display_name": "Google Docs",
+        "functions": {
+          "batch_update": {
+            "name": "batch_update",
+            "display_name": "Batch Update",
+            "description": "Perform multiple operations on a Google Docs document",
+            "example_payload": {
+              "document_id": "1234567890abcdef",
+              "requests": []
+            },
+            "required_fields": [
+              "document_id",
+              "requests"
+            ]
           },
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Title for the new document"
+          "create_document": {
+            "name": "create_document",
+            "display_name": "Create Document",
+            "description": "Create a new Google Docs document",
+            "example_payload": {
+              "title": "Test Document"
+            },
+            "required_fields": [
+              "title"
+            ],
+            "output_schema": {
+              "type": "object",
+              "description": "Document creation response",
+              "properties": {
+                "document_id": {
+                  "type": "string",
+                  "description": "Google Docs document ID"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Document title"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Shareable document URL"
+                },
+                "revision_id": {
+                  "type": "string",
+                  "description": "Document revision ID"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Creation status"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "ISO timestamp when created"
+                }
+              },
+              "required": ["document_id", "title", "url", "status"]
+            },
+            "error_schema": {
+              "type": "object",
+              "description": "Document creation error response",
+              "properties": {
+                "error_code": {
+                  "type": "string",
+                  "description": "Error code"
+                },
+                "error_message": {
+                  "type": "string",
+                  "description": "Error message"
+                },
+                "details": {
+                  "type": "object",
+                  "description": "Additional error details"
+                }
+              },
+              "required": ["error_code", "error_message"]
+            }
           },
-          "replacements": {
-            "type": "object",
-            "description": "Template variable replacements ({{VAR}} -> value)",
-            "additionalProperties": {"type": "string"}
+          "get_document": {
+            "name": "get_document",
+            "display_name": "Get Document",
+            "description": "Retrieve a Google Docs document by ID",
+            "example_payload": {
+              "document_id": "1234567890abcdef"
+            },
+            "required_fields": [
+              "document_id"
+            ]
           },
-          "folder_id": {
-            "type": "string",
-            "description": "Google Drive folder ID to place the document"
+          "insert_text": {
+            "name": "insert_text",
+            "display_name": "Insert Text",
+            "description": "Insert text into a Google Docs document",
+            "example_payload": {
+              "content": "This is new text to insert",
+              "document_id": "1234567890abcdef",
+              "index": 1
+            },
+            "required_fields": [
+              "document_id",
+              "content"
+            ]
+          },
+          "update_document": {
+            "name": "update_document",
+            "display_name": "Update Document",
+            "description": "Update a Google Docs document with batch operations",
+            "example_payload": {
+              "document_id": "1234567890abcdef",
+              "requests": []
+            },
+            "required_fields": [
+              "document_id",
+              "requests"
+            ]
           }
-        },
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "document_id": {"type": "string", "description": "Created document ID"},
-          "document_url": {"type": "string", "format": "uri", "description": "Document URL"},
-          "created_at": {"type": "string", "format": "date-time"}
         }
       },
-      "requiredFields": ["template_id", "title"],
-      "examplePayload": {
-        "template_id": "1234567890abcdef",
-        "title": "Project Proposal - Q1 2024",
-        "replacements": {
-          "{{CLIENT_NAME}}": "Acme Corporation",
-          "{{PROJECT_NAME}}": "Digital Transformation Initiative",
-          "{{DATE}}": "2024-01-15"
-        }
-      },
-      "oauth_scopes": ["https://www.googleapis.com/auth/documents"],
-      "timeout": "45s"
-    },
-    {
-      "name": "drive.share_document",
-      "description": "Share a Google Drive document with specified permissions",
-      "serviceType": "drive",
-      "function": "share_document",
-      "inputSchema": {
-        "type": "object",
-        "required": ["file_id", "email", "role"],
-        "properties": {
-          "file_id": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$",
-            "description": "Google Drive file ID"
+      "drive": {
+        "description": "Store, share, and manage files using Google Drive API",
+        "display_name": "Google Drive",
+        "functions": {
+          "create_folder": {
+            "name": "create_folder",
+            "display_name": "Create Folder",
+            "description": "Create a new folder in Google Drive",
+            "example_payload": {
+              "name": "New Folder",
+              "parent_id": "root"
+            },
+            "required_fields": [
+              "name"
+            ]
           },
-          "email": {
-            "type": "string",
-            "format": "email",
-            "description": "Email address to share with"
+          "get_file": {
+            "name": "get_file",
+            "display_name": "Get File",
+            "description": "Retrieve file information from Google Drive",
+            "example_payload": {
+              "file_id": "1234567890abcdef"
+            },
+            "required_fields": [
+              "file_id"
+            ]
           },
-          "role": {
-            "type": "string",
-            "enum": ["reader", "commenter", "writer", "owner"],
-            "description": "Permission level for the shared user"
+          "list_files": {
+            "name": "list_files",
+            "display_name": "List Files",
+            "description": "List files and folders in Google Drive",
+            "example_payload": {
+              "folder_id": "root",
+              "page_size": 10
+            },
+            "required_fields": []
           },
-          "send_notification": {
-            "type": "boolean",
-            "default": true,
-            "description": "Send email notification to the user"
+          "move_file": {
+            "name": "move_file",
+            "display_name": "Move File",
+            "description": "Move a file to a different folder",
+            "example_payload": {
+              "file_id": "1234567890abcdef",
+              "new_parent_id": "0987654321fedcba"
+            },
+            "required_fields": [
+              "file_id",
+              "new_parent_id"
+            ]
           },
-          "message": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Optional message to include in the notification"
+          "share_file": {
+            "name": "share_file",
+            "display_name": "Share File",
+            "description": "Share a file with another user",
+            "example_payload": {
+              "email": "user@example.com",
+              "file_id": "1234567890abcdef",
+              "role": "reader"
+            },
+            "required_fields": [
+              "file_id",
+              "email",
+              "role"
+            ]
+          },
+          "upload_file": {
+            "name": "upload_file",
+            "display_name": "Upload File",
+            "description": "Upload a file to Google Drive",
+            "example_payload": {
+              "content": "VGVzdCBmaWxlIGNvbnRlbnQ=",
+              "name": "test-file.txt",
+              "parent_id": "root"
+            },
+            "required_fields": [
+              "name",
+              "content"
+            ]
           }
-        },
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "permission_id": {"type": "string", "description": "Permission ID"},
-          "share_url": {"type": "string", "format": "uri", "description": "Shareable URL"},
-          "shared_at": {"type": "string", "format": "date-time"}
         }
       },
-      "requiredFields": ["file_id", "email", "role"],
-      "examplePayload": {
-        "file_id": "1234567890abcdef",
-        "email": "collaborator@example.com",
-        "role": "writer",
-        "send_notification": true,
-        "message": "Please review this document and provide your feedback."
-      },
-      "oauth_scopes": ["https://www.googleapis.com/auth/drive"],
-      "timeout": "30s"
-    },
-    {
-      "name": "calendar.create_reminder",
-      "description": "Create a calendar event/reminder with optional attendees",
-      "serviceType": "calendar",
-      "function": "create_event",
-      "inputSchema": {
-        "type": "object",
-        "required": ["title", "start_time", "end_time"],
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "Event title"
+      "gmail": {
+        "description": "Send, receive, and manage emails using Gmail API",
+        "display_name": "Gmail",
+        "functions": {
+          "get_message": {
+            "name": "get_message",
+            "display_name": "Get Email",
+            "description": "Retrieve a specific email message by ID",
+            "example_payload": {
+              "message_id": "1234567890abcdef"
+            },
+            "required_fields": [
+              "message_id"
+            ]
           },
-          "description": {
-            "type": "string",
-            "maxLength": 1000,
-            "description": "Event description"
+          "list_messages": {
+            "name": "list_messages",
+            "display_name": "List Emails",
+            "description": "List email messages with optional filtering",
+            "example_payload": {
+              "max_results": 10,
+              "query": "is:unread"
+            },
+            "required_fields": []
           },
-          "start_time": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Event start time (ISO 8601 format)"
+          "search_messages": {
+            "name": "search_messages",
+            "display_name": "Search Emails",
+            "description": "Search for emails in Gmail using query syntax",
+            "example_payload": {
+              "max_results": 10,
+              "query": "from:noreply@example.com"
+            },
+            "required_fields": [
+              "query"
+            ]
           },
-          "end_time": {
-            "type": "string",
-            "format": "date-time", 
-            "description": "Event end time (ISO 8601 format)"
-          },
-          "attendees": {
-            "type": "array",
-            "items": {"type": "string", "format": "email"},
-            "description": "List of attendee email addresses"
-          },
-          "location": {
-            "type": "string",
-            "description": "Event location"
-          },
-          "reminder_minutes": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10080,
-            "default": 15,
-            "description": "Reminder time in minutes before event"
+          "send_message": {
+            "name": "send_message",
+            "display_name": "Send Email",
+            "description": "Send an email message via Gmail",
+            "example_payload": {
+              "body": "This is a test email from SOHOaaS",
+              "subject": "Test Email",
+              "to": "recipient@example.com"
+            },
+            "required_fields": [
+              "to",
+              "subject",
+              "body"
+            ],
+            "output_schema": {
+              "type": "object",
+              "description": "Gmail send message response",
+              "properties": {
+                "message_id": {
+                  "type": "string",
+                  "description": "Gmail message ID"
+                },
+                "thread_id": {
+                  "type": "string",
+                  "description": "Gmail thread ID"
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Recipient email address"
+                },
+                "subject": {
+                  "type": "string",
+                  "description": "Email subject"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Send status"
+                },
+                "sent_at": {
+                  "type": "string",
+                  "description": "ISO timestamp when sent"
+                }
+              },
+              "required": ["message_id", "thread_id", "status", "sent_at"]
+            },
+            "error_schema": {
+              "type": "object",
+              "description": "Gmail send message error response",
+              "properties": {
+                "error_code": {
+                  "type": "string",
+                  "description": "Error code"
+                },
+                "error_message": {
+                  "type": "string",
+                  "description": "Error message"
+                },
+                "details": {
+                  "type": "object",
+                  "description": "Additional error details"
+                }
+              },
+              "required": ["error_code", "error_message"]
+            }
           }
-        },
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "event_id": {"type": "string", "description": "Calendar event ID"},
-          "event_url": {"type": "string", "format": "uri", "description": "Event URL"},
-          "created_at": {"type": "string", "format": "date-time"}
         }
-      },
-      "requiredFields": ["title", "start_time", "end_time"],
-      "examplePayload": {
-        "title": "Project Review Meeting",
-        "description": "Quarterly review of project milestones and deliverables",
-        "start_time": "2024-01-15T10:00:00Z",
-        "end_time": "2024-01-15T11:00:00Z",
-        "attendees": ["team@example.com", "manager@example.com"],
-        "location": "Conference Room A",
-        "reminder_minutes": 15
-      },
-      "oauth_scopes": ["https://www.googleapis.com/auth/calendar"],
-      "timeout": "30s"
-    }
-  ],
-  "capabilities": {
-    "tools": {"listChanged": false},
-    "resources": {"subscribe": false, "listChanged": false},
-    "prompts": {"listChanged": false}
-  },
-  "oauth_config": {
-    "scopes": {
-      "gmail": ["https://www.googleapis.com/auth/gmail.send"],
-      "docs": ["https://www.googleapis.com/auth/documents"],
-      "drive": ["https://www.googleapis.com/auth/drive"],
-      "calendar": ["https://www.googleapis.com/auth/calendar"]
-    },
-    "endpoints": {
-      "authorization_url": "https://accounts.google.com/o/oauth2/auth",
-      "token_url": "https://oauth2.googleapis.com/token"
+      }
     }
   }
 }

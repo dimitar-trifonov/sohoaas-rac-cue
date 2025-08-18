@@ -55,6 +55,14 @@ export const useAuthStore = create<AuthStore>()(
             }
             set({ user })
           }
+          
+          // Load workflows after successful authentication
+          try {
+            const { useWorkflowStore } = await import('./workflowStore')
+            await useWorkflowStore.getState().loadWorkflows()
+          } catch (error) {
+            console.error('Failed to load workflows after authentication:', error)
+          }
         } else {
           set({ 
             isAuthenticated: false, 

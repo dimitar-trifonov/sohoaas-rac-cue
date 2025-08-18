@@ -67,10 +67,26 @@
         "action": {
           "type": "string",
           "enum": [
-            "gmail.send_email",
-            "docs.create_from_template", 
-            "drive.share_document",
-            "calendar.create_reminder"
+            "calendar.create_event",
+            "calendar.delete_event",
+            "calendar.get_event",
+            "calendar.list_events",
+            "calendar.update_event",
+            "docs.batch_update",
+            "docs.create_document",
+            "docs.get_document",
+            "docs.insert_text",
+            "docs.update_document",
+            "drive.create_folder",
+            "drive.get_file",
+            "drive.list_files",
+            "drive.move_file",
+            "drive.share_file",
+            "drive.upload_file",
+            "gmail.get_message",
+            "gmail.list_messages",
+            "gmail.search_messages",
+            "gmail.send_message"
           ],
           "description": "MCP tool name - must match exactly with MCP server tools"
         },
@@ -96,11 +112,15 @@
               "body": "${user.email_content}"
             },
             {
-              "template_id": "${user.template_id}",
-              "title": "New Document",
-              "replacements": {
-                "CLIENT_NAME": "${user.client_name}"
-              }
+              "title": "${user.document_title}"
+            },
+            {
+              "name": "${user.folder_name}",
+              "parent_id": "root"
+            },
+            {
+              "file_id": "${steps.create_document.outputs.document_id}",
+              "new_parent_id": "${steps.create_folder.outputs.folder_id}"
             }
           ]
         },
@@ -172,9 +192,8 @@
         {
           "id": "send_report_email",
           "name": "Send Daily Report",
-          "service": "gmail",
-          "action": "gmail.send_email",
-          "inputs": {
+          "action": "gmail.send_message",
+          "parameters": {
             "to": "${user.recipient_email}",
             "subject": "Daily Report - ${user.report_date}",
             "body": "Please find attached the daily report for ${user.report_date}."

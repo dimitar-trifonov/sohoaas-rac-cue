@@ -1,5 +1,5 @@
 ---
-model: googleai/gemini-1.5-flash
+model: openai/gpt-4o-mini
 config:
   temperature: 0.1
   maxOutputTokens: 1500
@@ -7,11 +7,13 @@ input:
   schema:
     type: object
     properties:
-      user_input:
+      user_intent:
         type: string
       validated_intent:
         type: object
       available_services:
+        type: string
+      rac_context:
         type: string
 output:
   schema:
@@ -22,6 +24,8 @@ output:
       name:
         type: string
       description:
+        type: string
+      original_intent:
         type: string
       steps:
         type: array
@@ -36,12 +40,33 @@ output:
               type: string
             action:
               type: string
-            inputs:
+            parameters:
               type: object
-            outputs:
-              type: object
+              properties:
+                example_param:
+                  type: string
+              additionalProperties: true
+            depends_on:
+              type: array
+              items:
+                type: string
+            timeout:
+              type: string
+              description: Use ${user.param_name} for user parameters (standardized format)
       user_parameters:
         type: object
+        properties:
+          example_param:
+            type: object
+            properties:
+              type:
+                type: string
+              required:
+                type: boolean
+              prompt:
+                type: string
+              validation:
+                type: string
         additionalProperties:
           type: object
           properties:
@@ -52,46 +77,156 @@ output:
             prompt:
               type: string
             validation:
-              type: object
+              type: string
       services:
         type: object
+        properties:
+          example_service:
+            type: object
+            properties:
+              service:
+                type: string
+              oauth_scopes:
+                type: array
+                items:
+                  type: string
         additionalProperties:
           type: object
           properties:
-            type:
+            service:
               type: string
             oauth_scopes:
               type: array
               items:
                 type: string
-    required: ["version", "name", "description", "steps", "user_parameters", "services"]
+    required: ["version", "name", "description", "steps", "user_parameters", "services", "original_intent"]
     additionalProperties: false
 ---
 
 You are the SOHOAAS Workflow Generator. Generate JSON workflows from user intent.
 
 **SYSTEM SPECIFICATION** (Requirements-as-Code):
-The following CUE specification defines the complete system architecture, data flow, and requirements for workflow generation. Use this as authoritative context for understanding how workflows should be structured and what the system expects.
+The following specification defines the system architecture and workflow requirements:
 
-{{.rac_context}}
+{{rac_context}}
 
-**TASK**: Convert user intent into executable JSON workflow following the schema above.
+**JSON WORKFLOW SCHEMA**: Generate JSON workflows with this exact structure:
+- **version**: String (e.g., "1.0.0")
+- **name**: String (workflow name)
+- **description**: String (what the workflow does)
+- **steps**: Array of step objects with:
+  - id: unique identifier
+  - name: human-readable name
+  - service: MCP service name (gmail, google_drive, calendar, etc.)
+  - action: service.method format (e.g., "gmail.send_message")
+  - parameters: Use ${steps.step_id.outputs.field_name} for step outputs (standardized format) and ${user.param_name} for user parameters (standardized format)
+  - depends_on: array of step IDs this depends on (optional)
+  - timeout: string (e.g., "30s") (optional)
+- **user_parameters**: Object defining user inputs with type, prompt, validation
+- **services**: Object defining OAuth service configurations
+
+**TASK**: Convert user intent into executable JSON workflow following this schema.
 
 **INPUT**:
-- User Request: {{.user_input}}
-- Intent Analysis: {{.validated_intent}}
-- Available Services: {{.available_services}}
+- User Intent: {{user_intent}}
+- Intent Analysis: {{validated_intent}}
+- Available Services with Parameters: {{available_services}}
+
+**PARAMETER EXTRACTION STRATEGY**:
+1. **Extract Values from User Intent**: Identify specific values mentioned by the user (emails, names, dates, etc.)
+2. **Make Parameters User-Configurable**: Even if values are mentioned, create user_parameters so users can modify them
+3. **Provide Smart Defaults**: Use extracted values as default values in parameter descriptions
+4. **Enable UI Flexibility**: Structure parameters so the UI can present them as editable fields
 
 **OUTPUT REQUIREMENTS**:
 1. **JSON Only** - No explanations, no markdown
 2. **Schema Compliance** - Must match workflow_json_schema.json
 3. **Service Validation** - Use only available services
-4. **Field Names** - Use: version, name, description, steps, user_parameters, services
+4. **Field Names** - Use: version, name, description, steps, user_parameters, services, original_intent
+5. **CRITICAL: Exact Function Names** - Use ONLY the exact function names listed in available_services. Do NOT modify, pluralize, or guess function names.
+6. **Preserve Original Intent** - Include original_intent field with the user's exact request
 
 **WORKFLOW STRUCTURE**:
 - **Steps**: Sequential service calls with dependencies
-- **User Parameters**: Dynamic values with prompts and validation
+- **User Parameters**: Dynamic values with prompts and validation (use parameter names from available services)
 - **Services**: OAuth2 bindings for Google Workspace services
+
+**PARAMETER MAPPING & EXTRACTION**:
+- **Extract from Intent**: Look for specific values in user intent (emails, folder names, dates, queries)
+- **Create User Parameters**: Always create user_parameters even if values are mentioned in intent
+- **Smart Defaults**: Use extracted values as default values or in parameter descriptions
+- **User-Friendly Prompts**: Create clear prompts that explain what each parameter does
+- **Parameter References**: Use ${user.param_name} format in step parameters
+- **CRITICAL: Parameter Name Consistency**: The param_name in ${user.param_name} must EXACTLY match the key names defined in user_parameters object
+- **Example**: If user says "email john@example.com", create parameter "recipient_email" with default "john@example.com" but allow UI editing
+
+**USER PARAMETER STRUCTURE**:
+Each user parameter should include:
+- **type**: "string", "email", "number", "boolean", "datetime"
+- **required**: true/false
+- **prompt**: Clear description for UI display
+- **default**: Extracted value from user intent (if available)
+- **validation**: Optional validation rules
+
+**EXAMPLE - Parameter Extraction in Action**:
+User Intent: "Send an email to john@example.com with subject 'Weekly Report' about our project status"
+
+Extract and create user_parameters:
+```json
+{
+  "recipient_email": {
+    "type": "email",
+    "required": true,
+    "prompt": "Email recipient address",
+    "default": "john@example.com"
+  },
+  "email_subject": {
+    "type": "string", 
+    "required": true,
+    "prompt": "Email subject line",
+    "default": "Weekly Report"
+  },
+  "email_body": {
+    "type": "string",
+    "required": true,
+    "prompt": "Email message content",
+    "default": "Update about our project status"
+  }
+}
+```
+
+This allows users to see extracted values but modify them in the UI if needed.
+
+**FUNCTION NAME ACCURACY**:
+- The available_services string contains the EXACT function names available
+- For Gmail: use "get_message" (singular), NOT "get_messages" (plural)
+- For Gmail: use "list_messages", "search_messages", "send_message" as shown
+- Copy function names EXACTLY as listed in available_services - do not modify them
+
+**CALENDAR API PARAMETER NAMES**:
+- For calendar.create_event, use "startTime" and "endTime" (camelCase), NOT "start_time" or "end_time"
+- Required parameters: "title", "startTime", "endTime"
+- Optional parameters: "description", "attendees"
+
+**GMAIL API PARAMETER ACCURACY**:
+- gmail.list_messages accepts: max_results (number), query (string)
+- NO "order" parameter - Gmail API doesn't support ordering by date in list_messages
+- To get oldest emails, use query parameter with date ranges (e.g., "before:2023/1/1")
+- Use max_results to limit number of results, not "limit"
+
+**STEP DEPENDENCY MANAGEMENT**:
+For each step, set the "depends_on" field to ensure proper execution order:
+1. **Explicit Dependencies**: If a step uses ${steps.step_id.outputs.field}, add "step_id" to depends_on array
+2. **Logical Dependencies**: If a step logically requires another to complete first, add explicit dependency
+3. **Independent Steps**: If a step has no dependencies, use "depends_on": []
+4. **Example**: Step using document_id from create_document should have "depends_on": ["create_document"]
+
+**PARAMETER NAMING VALIDATION**:
+Before finalizing the workflow, verify that:
+1. Every ${user.param_name} reference in steps has a matching "param_name" key in user_parameters
+2. Every key in user_parameters is referenced at least once in step parameters
+3. Parameter names are consistent and descriptive (e.g., "meeting_title" not "meeting_description")
+4. Every ${steps.step_id.outputs.field} reference has corresponding "step_id" in depends_on array
 
 **EXAMPLE OUTPUT FORMAT**:
 
@@ -101,20 +236,50 @@ The following CUE specification defines the complete system architecture, data f
   "description": "Send automated emails",
   "steps": [
     {
+      "id": "create_document",
+      "name": "Create Document",
+      "service": "docs",
+      "action": "docs.create_document",
+      "parameters": {
+        "title": "${user.document_title}"
+      },
+      "outputs": {
+        "document_id": {
+          "type": "string",
+          "description": "Google Docs document ID"
+        },
+        "document_url": {
+          "type": "string", 
+          "description": "Shareable document URL"
+        },
+        "title": {
+          "type": "string",
+          "description": "Document title"
+        }
+      },
+      "depends_on": [],
+      "timeout": "30s"
+    },
+    {
       "id": "send_email",
       "name": "Send Email",
       "service": "gmail",
-      "action": "gmail.send_email",
+      "action": "gmail.send_message",
       "parameters": {
         "to": "${user.recipient}",
         "subject": "${user.subject}",
-        "body": "${user.message}"
+        "body": "Document created: ${steps.create_document.outputs.document_url}"
       },
-      "depends_on": [],
+      "depends_on": ["create_document"],
       "timeout": "30s"
     }
   ],
   "user_parameters": {
+    "document_title": {
+      "type": "string",
+      "required": true,
+      "prompt": "Enter document title:"
+    },
     "recipient": {
       "type": "string",
       "required": true,
@@ -125,11 +290,6 @@ The following CUE specification defines the complete system architecture, data f
       "type": "string",
       "required": true,
       "prompt": "Enter email subject:"
-    },
-    "message": {
-      "type": "string",
-      "required": true,
-      "prompt": "Enter email message:"
     }
   },
   "services": {
@@ -137,7 +297,8 @@ The following CUE specification defines the complete system architecture, data f
       "service": "gmail",
       "oauth_scopes": ["https://www.googleapis.com/auth/gmail.send"]
     }
-  }
+  },
+  "original_intent": "Send an email to john@example.com with subject 'Weekly Report' and message 'Update about our project status'"
 }
 
 Generate the JSON workflow now:

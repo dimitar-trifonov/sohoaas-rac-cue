@@ -219,6 +219,7 @@ func (h *Handler) GenerateWorkflow(c *gin.Context) {
 	log.Printf("[API] Request Headers: %+v", c.Request.Header)
 	
 	var request struct {
+		UserIntent      string                 `json:"user_intent"`
 		ValidatedIntent map[string]interface{} `json:"validated_intent" binding:"required"`
 	}
 	
@@ -243,7 +244,8 @@ func (h *Handler) GenerateWorkflow(c *gin.Context) {
 	userObj := user.(*types.User)
 	
 	log.Printf("[API] Calling AgentManager.GenerateWorkflow for user %s", userObj.ID)
-	response, err := h.agentManager.GenerateWorkflow(userObj.ID, request.ValidatedIntent, userObj)
+	log.Printf("[API] User intent: %s", request.UserIntent)
+	response, err := h.agentManager.GenerateWorkflow(userObj.ID, request.UserIntent, request.ValidatedIntent, userObj)
 	if err != nil {
 		log.Printf("[API] ERROR: GenerateWorkflow failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -267,11 +269,12 @@ func (h *Handler) GenerateWorkflow(c *gin.Context) {
 	})
 }
 
-// ExecuteWorkflow executes a generated workflow
+// ExecuteWorkflow executes a stored workflow by ID
 func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 	var request struct {
-		WorkflowCUE    string                 `json:"workflow_cue" binding:"required"`
+		WorkflowID     string                 `json:"workflow_id" binding:"required"`
 		UserParameters map[string]interface{} `json:"user_parameters"`
+		UserTimezone   string                 `json:"user_timezone"`
 	}
 	
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -302,14 +305,26 @@ func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 	
 	log.Printf("[API] === WORKFLOW EXECUTION STARTED ===")
 	log.Printf("[API] User: %s", userObj.ID)
-	log.Printf("[API] Workflow CUE length: %d characters", len(request.WorkflowCUE))
+	log.Printf("[API] Workflow ID: %s", request.WorkflowID)
 	log.Printf("[API] User parameters: %+v", request.UserParameters)
+	
+	// Load workflow from storage
+	workflow, err := h.workflowStorage.GetWorkflow(userObj.ID, request.WorkflowID)
+	if err != nil {
+		log.Printf("[API] Failed to load workflow %s: %v", request.WorkflowID, err)
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": fmt.Sprintf("Workflow not found: %s", request.WorkflowID),
+		})
+		return
+	}
+	
+	log.Printf("[API] Loaded workflow: %s (CUE length: %d characters)", workflow.Name, len(workflow.Content))
 	
 	// Create workflow execution
 	execution := &types.WorkflowExecution{
 		ID:          "exec_" + userObj.ID + "_" + time.Now().Format("20060102150405"),
 		UserID:      userObj.ID,
-		WorkflowCUE: request.WorkflowCUE,
+		WorkflowCUE: workflow.Content,
 		Status:      "pending",
 		Steps:       []types.WorkflowStep{},
 		CreatedAt:   time.Now(),
@@ -320,11 +335,12 @@ func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 	
 	// Prepare execution plan using the execution engine
 	executionPlan, err := h.executionEngine.PrepareExecution(
-		request.WorkflowCUE, 
+		workflow.Content, 
 		userObj.ID, 
 		userObj, 
 		request.UserParameters, 
 		tokenStr,
+		request.UserTimezone,
 	)
 	if err != nil {
 		log.Printf("[API] ERROR: Failed to prepare execution plan: %v", err)
@@ -552,7 +568,7 @@ func (h *Handler) TestCompleteWorkflowPipeline(c *gin.Context) {
 	
 	// Phase 2: Test Workflow Generation
 	log.Printf("[API] Phase 2: Testing Workflow Generation")
-	workflowResponse, err := h.agentManager.GenerateWorkflow(user.ID, intentResponse.Output, user)
+	workflowResponse, err := h.agentManager.GenerateWorkflow(user.ID, testIntent.WorkflowPattern, intentResponse.Output, user)
 	if err != nil {
 		log.Printf("[API] ERROR: Workflow generation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -591,7 +607,7 @@ func (h *Handler) TestCompleteWorkflowPipeline(c *gin.Context) {
 		return
 	}
 	
-	executionPlan, err := h.executionEngine.PrepareExecution(cueworkflow, user.ID, user, intentResponse.Output, tokenStr)
+	executionPlan, err := h.executionEngine.PrepareExecution(cueworkflow, user.ID, user, intentResponse.Output, tokenStr, "")
 	if err != nil {
 		log.Printf("[API] ERROR: Execution preparation failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -694,7 +710,7 @@ func (h *Handler) ValidateServiceCatalog(c *gin.Context) {
 	mcpServices, err := h.mcpService.GetServiceCatalog()
 	if err != nil {
 		validationErrors = append(validationErrors, "Failed to query MCP service catalog")
-	} else if len(mcpServices) == 0 {
+	} else if len(mcpServices.Providers.Workspace.Services) == 0 {
 		validationErrors = append(validationErrors, "No services available in MCP catalog")
 	}
 	

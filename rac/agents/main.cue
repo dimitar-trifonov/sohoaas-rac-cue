@@ -9,10 +9,8 @@ import (
     "agent_manager.cue"
     "personal_capabilities.cue"
     "intent_gatherer.cue"
-    "story_coaching.cue"
     "intent_analyst.cue"
     "workflow_generator.cue"
-    "workflow_editor.cue"
 )
 
 // Complete SOHOAAS Multi-Agent System
@@ -36,10 +34,8 @@ SOHOAASAgentSystem: {
     agents: {
         personal_capabilities: PersonalCapabilitiesAgent
         intent_gatherer: IntentGathererAgent
-        story_coaching: StoryCoachingAgent
         intent_analyst: IntentAnalystAgent
         workflow_generator: WorkflowGeneratorAgent
-        workflow_editor: WorkflowEditorAgent
     }
     
     // System-wide event definitions
@@ -62,11 +58,6 @@ SOHOAASAgentSystem: {
         {
             id: "capabilities_discovered"
             source: "personal_capabilities"
-            targets: ["story_coaching"]
-        },
-        {
-            id: "story_analyzed"
-            source: "story_coaching"
             targets: ["intent_gatherer"]
         },
         {
@@ -82,11 +73,6 @@ SOHOAASAgentSystem: {
         {
             id: "workflow_generated"
             source: "workflow_generator"
-            targets: ["workflow_editor"]
-        },
-        {
-            id: "workflow_validated"
-            source: "workflow_editor"
             targets: ["execution_engine"]
         }
     ]
@@ -133,11 +119,6 @@ SOHOAASAgentSystem: {
                 port: 8082
                 resources: { cpu: "1.0", memory: "1Gi" }
             }
-            story_coaching: {
-                replicas: 2
-                port: 8083
-                resources: { cpu: "0.8", memory: "1Gi" }
-            }
             intent_analyst: {
                 replicas: 2
                 port: 8084
@@ -147,11 +128,6 @@ SOHOAASAgentSystem: {
                 replicas: 1
                 port: 8085
                 resources: { cpu: "1.5", memory: "2Gi" }
-            }
-            workflow_editor: {
-                replicas: 2
-                port: 8086
-                resources: { cpu: "1.0", memory: "1Gi" }
             }
         }
         
@@ -191,11 +167,9 @@ SOHOAASAgentSystem: {
             steps: [
                 { agent: "auth_service", action: "authenticate_user" },
                 { agent: "personal_capabilities", action: "discover_capabilities" },
-                { agent: "story_coaching", action: "analyze_daily_story" },
                 { agent: "intent_gatherer", action: "extract_intent" },
                 { agent: "intent_analyst", action: "validate_intent" },
-                { agent: "workflow_generator", action: "generate_workflow" },
-                { agent: "workflow_editor", action: "validate_workflow" }
+                { agent: "workflow_generator", action: "generate_workflow" }
             ]
             expected_duration: "< 30s"
         }

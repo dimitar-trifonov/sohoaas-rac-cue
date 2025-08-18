@@ -25,7 +25,7 @@ func NewMockMCPServer(t *testing.T) *MockMCPServer {
 	// Create HTTP server with mock handlers
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/services", mock.handleServiceCatalog)
-	mux.HandleFunc("/api/v1/mcp/execute", mock.handleExecuteAction)
+	mux.HandleFunc("/api/mcp/tools/call", mock.handleExecuteAction)
 	
 	mock.server = httptest.NewServer(mux)
 	t.Logf("Mock MCP Server started at: %s", mock.server.URL)
@@ -56,6 +56,14 @@ func (m *MockMCPServer) SetDefaultGoogleWorkspaceResponses() {
 		Success: true,
 		Data: map[string]interface{}{
 			"message_id": "mock_message_123",
+			"status":     "sent",
+		},
+	})
+	
+	m.SetResponse("gmail", "send_message", &ExecuteActionResponse{
+		Success: true,
+		Data: map[string]interface{}{
+			"message_id": "mock_message_456",
 			"status":     "sent",
 		},
 	})
@@ -140,172 +148,179 @@ func (m *MockMCPServer) handleExecuteAction(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	
-	// Parse request
-	var request ExecuteActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	// Parse MCP tools/call request format
+	var toolsRequest struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&toolsRequest); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
-	
+
+	// Extract OAuth token from arguments
+	oauthToken, _ := toolsRequest.Arguments["token"].(string)
+
 	// Validate OAuth token (basic check for PoC)
-	if request.OAuthToken == "" || request.OAuthToken == "invalid_token" {
-		response := &ExecuteActionResponse{
-			Success: false,
-			Error:   "Invalid or missing OAuth token",
+	if oauthToken == "" || oauthToken == "invalid_token" {
+		toolsResponse := map[string]interface{}{
+			"result": map[string]interface{}{
+				"isError": true,
+				"content": []map[string]interface{}{
+					{
+						"type": "text",
+						"text": "Invalid or missing OAuth token",
+					},
+				},
+			},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(toolsResponse)
 		return
 	}
-	
-	// Find mock response
-	key := fmt.Sprintf("%s.%s", request.Service, request.Action)
+
+	// Find mock response using tool name
+	key := toolsRequest.Name
 	response, exists := m.responses[key]
 	if !exists {
-		response = &ExecuteActionResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Mock response not configured for %s.%s", request.Service, request.Action),
+		// Return MCP tools/call error format for unknown actions
+		toolsResponse := map[string]interface{}{
+			"result": map[string]interface{}{
+				"isError": true,
+				"content": []map[string]interface{}{
+					{
+						"type": "text",
+						"text": fmt.Sprintf("Mock response not configured for %s", key),
+					},
+				},
+			},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
-		json.NewEncoder(w).Encode(response)
+		json.NewEncoder(w).Encode(toolsResponse)
 		return
 	}
 	
-	// Return mock response
+	// Convert ExecuteActionResponse to MCP tools/call format with service-specific responses
+	var responseText string
+	switch key {
+	case "gmail.list_messages":
+		responseText = `{"messages": [{"id": "msg1", "subject": "Test Email", "from": "test@example.com"}]}`
+	case "docs.create_document":
+		responseText = `{"document_id": "doc_123", "document_url": "https://docs.google.com/document/d/doc_123"}`
+	case "gmail.send_message", "gmail.send_email":
+		responseText = `{"message_id": "msg_456", "status": "sent"}`
+	case "calendar.create_event":
+		responseText = `{"event_id": "evt_789", "event_url": "https://calendar.google.com/event/evt_789"}`
+	default:
+		responseText = fmt.Sprintf(`{"result": "Mock response for %s"}`, key)
+	}
+
+	toolsResponse := map[string]interface{}{
+		"result": map[string]interface{}{
+			"isError": !response.Success,
+			"content": []map[string]interface{}{
+				{
+					"type": "text",
+					"text": responseText,
+				},
+			},
+		},
+	}
+	
+	if !response.Success {
+		toolsResponse["result"].(map[string]interface{})["content"] = []map[string]interface{}{
+			{
+				"type": "text",
+				"text": response.Error,
+			},
+		}
+	}
+	
+	// Return the MCP tools/call response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(toolsResponse)
 }
 
-// buildMockServiceCatalog creates a mock service catalog matching real MCP structure
+// buildMockServiceCatalog creates a minimal mock service catalog for testing
 func buildMockServiceCatalog() map[string]interface{} {
 	return map[string]interface{}{
 		"providers": map[string]interface{}{
 			"workspace": map[string]interface{}{
+				"description": "Google Workspace services",
+				"display_name": "Google Workspace",
 				"services": map[string]interface{}{
 					"gmail": map[string]interface{}{
-						"name":        "Gmail",
-						"description": "Google Gmail service",
+						"display_name": "Gmail",
+						"description":  "Send, receive, and manage emails using Gmail API",
 						"functions": map[string]interface{}{
+							"send_message": map[string]interface{}{
+								"name":         "send_message",
+								"display_name": "Send Email",
+								"description":  "Send an email message via Gmail",
+								"required_fields": []interface{}{"to", "subject", "body"},
+								"example_payload": map[string]interface{}{
+									"to":      "recipient@example.com",
+									"subject": "Test Email",
+									"body":    "This is a test email from SOHOaaS",
+								},
+							},
 							"send_email": map[string]interface{}{
-								"description": "Send an email",
-								"parameters":  map[string]interface{}{},
+								"name":         "send_email",
+								"display_name": "Send Email (Legacy)",
+								"description":  "Send an email message via Gmail (legacy action name)",
+								"required_fields": []interface{}{"to", "subject", "body"},
+								"example_payload": map[string]interface{}{
+									"to":      "recipient@example.com",
+									"subject": "Test Email",
+									"body":    "This is a test email from SOHOaaS",
+								},
 							},
 							"list_messages": map[string]interface{}{
-								"description": "List email messages",
-								"parameters":  map[string]interface{}{},
-							},
-							"get_message": map[string]interface{}{
-								"description": "Get a specific email message",
-								"parameters":  map[string]interface{}{},
-							},
-							"search_messages": map[string]interface{}{
-								"description": "Search email messages",
-								"parameters":  map[string]interface{}{},
+								"name":         "list_messages",
+								"display_name": "List Messages",
+								"description":  "List Gmail messages with optional query",
+								"required_fields": []interface{}{},
+								"example_payload": map[string]interface{}{
+									"max_results": 10,
+									"query": "is:unread",
+								},
 							},
 						},
-						"status": "connected",
 					},
 					"docs": map[string]interface{}{
-						"name":        "Google Docs",
-						"description": "Google Docs service",
+						"display_name": "Google Docs",
+						"description":  "Create and manage Google Docs documents",
 						"functions": map[string]interface{}{
 							"create_document": map[string]interface{}{
-								"description": "Create a new document",
-								"parameters":  map[string]interface{}{},
-							},
-							"get_document": map[string]interface{}{
-								"description": "Get document content",
-								"parameters":  map[string]interface{}{},
-							},
-							"append_text": map[string]interface{}{
-								"description": "Append text to document",
-								"parameters":  map[string]interface{}{},
-							},
-							"update_document": map[string]interface{}{
-								"description": "Update document content",
-								"parameters":  map[string]interface{}{},
+								"name":         "create_document",
+								"display_name": "Create Document",
+								"description":  "Create a new Google Docs document",
+								"required_fields": []interface{}{"title"},
+								"example_payload": map[string]interface{}{
+									"title": "My Document",
+								},
 							},
 						},
-						"status": "connected",
-					},
-					"drive": map[string]interface{}{
-						"name":        "Google Drive",
-						"description": "Google Drive service",
-						"functions": map[string]interface{}{
-							"create_folder": map[string]interface{}{
-								"description": "Create a new folder",
-								"parameters":  map[string]interface{}{},
-							},
-							"list_files": map[string]interface{}{
-								"description": "List files in Drive",
-								"parameters":  map[string]interface{}{},
-							},
-							"get_file": map[string]interface{}{
-								"description": "Get file information",
-								"parameters":  map[string]interface{}{},
-							},
-							"move_file": map[string]interface{}{
-								"description": "Move file to folder",
-								"parameters":  map[string]interface{}{},
-							},
-							"share_file": map[string]interface{}{
-								"description": "Share file with users",
-								"parameters":  map[string]interface{}{},
-							},
-						},
-						"status": "connected",
 					},
 					"calendar": map[string]interface{}{
-						"name":        "Google Calendar",
-						"description": "Google Calendar service",
+						"display_name": "Google Calendar",
+						"description":  "Create and manage calendar events",
 						"functions": map[string]interface{}{
 							"create_event": map[string]interface{}{
-								"description": "Create a calendar event",
-								"parameters":  map[string]interface{}{},
-							},
-							"list_events": map[string]interface{}{
-								"description": "List calendar events",
-								"parameters":  map[string]interface{}{},
-							},
-							"get_event": map[string]interface{}{
-								"description": "Get event details",
-								"parameters":  map[string]interface{}{},
-							},
-							"update_event": map[string]interface{}{
-								"description": "Update calendar event",
-								"parameters":  map[string]interface{}{},
-							},
-							"delete_event": map[string]interface{}{
-								"description": "Delete calendar event",
-								"parameters":  map[string]interface{}{},
+								"name":         "create_event",
+								"display_name": "Create Event",
+								"description":  "Create a new calendar event",
+								"required_fields": []interface{}{"title", "start_time"},
+								"example_payload": map[string]interface{}{
+									"title": "Meeting",
+									"start_time": "2024-01-01T10:00:00Z",
+								},
 							},
 						},
-						"status": "connected",
-					},
-					"sheets": map[string]interface{}{
-						"name":        "Google Sheets",
-						"description": "Google Sheets service",
-						"functions": map[string]interface{}{
-							"create_spreadsheet": map[string]interface{}{
-								"description": "Create a new spreadsheet",
-								"parameters":  map[string]interface{}{},
-							},
-							"get_values": map[string]interface{}{
-								"description": "Get cell values",
-								"parameters":  map[string]interface{}{},
-							},
-							"update_values": map[string]interface{}{
-								"description": "Update cell values",
-								"parameters":  map[string]interface{}{},
-							},
-							"append_values": map[string]interface{}{
-								"description": "Append values to sheet",
-								"parameters":  map[string]interface{}{},
-							},
-						},
-						"status": "connected",
 					},
 				},
 			},

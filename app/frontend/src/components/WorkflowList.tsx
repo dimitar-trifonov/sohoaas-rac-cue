@@ -1,14 +1,14 @@
 import React, { useState } from 'react'
 import { PlayIcon, EyeIcon, ClockIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
-import type { Workflow } from '../types'
+import type { WorkflowOrFile } from '../types'
 import { WorkflowViewer } from './WorkflowViewer'
 import { Button } from './ui'
 import { cn } from '../design-system'
 
 interface WorkflowListProps {
-  workflows: Workflow[]
-  onExecuteWorkflow?: (workflow: Workflow) => Promise<void>
-  onViewWorkflow?: (workflow: Workflow) => void
+  workflows: WorkflowOrFile[]
+  onExecuteWorkflow?: (workflow: WorkflowOrFile) => Promise<void>
+  onViewWorkflow?: (workflow: WorkflowOrFile) => void
 }
 
 export const WorkflowList: React.FC<WorkflowListProps> = ({ 
@@ -18,7 +18,24 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
 }) => {
   const [executingWorkflow, setExecutingWorkflow] = useState<string | null>(null)
   const [viewerOpen, setViewerOpen] = useState(false)
-  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null)
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOrFile | null>(null)
+
+  const handleExecuteStep = async (stepId: string, _parameters?: Record<string, any>) => {
+    // TODO: Implement individual step execution API
+    alert(`Step execution not yet implemented. Step ID: ${stepId}`)
+  }
+
+  const handleExecuteWorkflow = async (workflow: WorkflowOrFile) => {
+    if (!onExecuteWorkflow) return
+    
+    setExecutingWorkflow(workflow.id)
+    try {
+      await onExecuteWorkflow(workflow)
+    } finally {
+      setExecutingWorkflow(null)
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -144,7 +161,8 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
           setViewerOpen(false)
           setSelectedWorkflow(null)
         }}
-        onExecuteWorkflow={onExecuteWorkflow}
+        onExecuteStep={handleExecuteStep}
+        onExecuteWorkflow={handleExecuteWorkflow}
       />
     </div>
   )

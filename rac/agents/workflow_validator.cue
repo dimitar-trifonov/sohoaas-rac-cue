@@ -87,7 +87,7 @@ WorkflowValidatorService: {
                     description: "Check all user parameters are properly defined and collectable"
                     action: "validator.check_user_parameters"
                     validations: [
-                        "All ${USER_INPUT:param} references have corresponding parameter definitions",
+                        "All ${user.param} references have corresponding parameter definitions",
                         "Required parameters have prompts for user collection",
                         "Parameter types are valid (string, number, boolean, array, object)",
                         "Parameter validation rules are syntactically correct"
@@ -160,7 +160,7 @@ WorkflowValidatorService: {
                             service: "gmail"
                             action: "send_message"
                             inputs: {
-                                to: "${USER_INPUT:recipient}"
+                                to: "${user.recipient}"
                                 subject: "Test"
                             }
                             outputs: { message_id: "sent_id" }

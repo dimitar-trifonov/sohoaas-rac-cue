@@ -3,30 +3,24 @@ graph TB
     subgraph "User Interface"
         UI1[OAuth Login Button]
         UI2[Personal Capability Showcase]
-        UI3[Coach Me Button - Story Interface]
-        UI4[Direct Intent Chat]
-        UI5[Workflow Editor & Approval]
-        UI6[Execution Dashboard]
+        UI3[Direct Intent Chat]
+        UI4[Workflow Approval & Execution]
     end
     
-    %% Core System States
-    subgraph "Core System States"
-        S1[user_auth<br/>OAuth tokens & services]
-        S2[personal_capabilities<br/>Available automations]
-        S3[daily_story_coaching<br/>Story analysis]
-        S4[personal_chat<br/>Direct intent]
-        S5[workflow_intent<br/>Analyzed intent + parameters]
-        S6[generated_workflow<br/>RaC specification]
-        S7[workflow_validation<br/>Format & completeness check]
-        S8[rac_execution<br/>Deterministic execution]
+    %% 4-Agent PoC Pipeline (LLM-Powered)
+    subgraph "Autonomous Agents"
+        A1[Intent Gatherer<br/>Multi-turn workflow discovery]
+        A2[Intent Analyst<br/>Workflow pattern analysis]
+        A3[Workflow Generator<br/>JSON workflow generation]
+        A4[Workflow Validator<br/>CUE workflow validation]
     end
     
-    %% LLM Services
-    subgraph "LLM Services"
-        LLM1[Intent Analysis LLM<br/>Extract parameters & actions]
-        LLM2[Story Analysis LLM<br/>Identify automation opportunities]
-        LLM3[Workflow Generator LLM<br/>Create RaC specifications]
-        LLM4[Content Generation LLM<br/>Email/document content]
+    %% 4-Service PoC Pipeline (Deterministic)
+    subgraph "Deterministic Services"
+        S1[Personal Capabilities Service<br/>MCP discovery + parameter schemas]
+        S2[CUE Generator Service<br/>JSON→CUE conversion]
+        S3[Workflow Executor Service<br/>Step-by-step MCP execution]
+        S4[Agent Manager Service<br/>Event orchestration]
     end
     
     %% MCP Integration Layer
@@ -34,76 +28,74 @@ graph TB
         MCP1[Gmail MCP Server<br/>Email operations]
         MCP2[Google Docs MCP Server<br/>Document operations]
         MCP3[Google Calendar MCP Server<br/>Calendar operations]
-        MCP4[Other MCP Servers<br/>Extensible integrations]
-    end
-    
-    %% RaC Workflow Engine
-    subgraph "RaC Workflow Engine"
-        RAC1[RaC Validator<br/>Format & completeness]
-        RAC2[RaC Executor<br/>Deterministic execution]
-        RAC3[Parameter Manager<br/>Editable parameters]
-        RAC4[State Manager<br/>Workflow state tracking]
+        MCP4[Google Drive MCP Server<br/>File operations]
     end
     
     %% External Services
     subgraph "External Services"
         EXT1[Google OAuth2<br/>Authentication]
-        EXT2[Gmail API<br/>Email service]
-        EXT3[Google Docs API<br/>Document service]
-        EXT4[Google Calendar API<br/>Calendar service]
+        EXT2[OpenAI GPT-4<br/>LLM Provider]
+        EXT3[Firebase Firestore<br/>Storage]
+        EXT4[Cloud Run<br/>Deployment]
     end
     
-    %% User Flow Connections
-    UI1 --> S1
-    S1 --> S2
-    UI2 --> S2
-    UI3 --> S3
-    UI4 --> S4
+    %% PoC Pipeline Flow (Event-Driven)
+    UI1 -->|OAuth Login| S1
+    S1 -->|user_authenticated| S1
+    S1 -->|capabilities_discovered| A1
     
-    %% Story Coaching Flow
-    S3 --> LLM2
-    LLM2 --> S3
+    UI3 -->|User Intent| A1
+    A1 -->|workflow_intent_discovered| A2
+    A2 -->|intent_analysis_complete| A3
+    A3 -->|workflow_generation_complete| S2
+    S2 -->|cue_conversion_complete| A4
+    A4 -->|validation_complete| S3
+    S3 -->|execution_completed| UI4
     
-    %% Intent Processing Flow
-    S4 --> LLM1
-    LLM1 --> S5
-    S5 --> LLM3
-    LLM3 --> S6
-    
-    %% Validation Flow
-    S6 --> RAC1
-    RAC1 --> S7
-    UI5 --> S7
-    
-    %% Execution Flow
-    S7 --> RAC2
-    RAC2 --> S8
-    UI6 --> S8
+    %% Agent Manager Orchestration
+    S4 -.->|Event Routing| A1
+    S4 -.->|Event Routing| A2
+    S4 -.->|Event Routing| A3
+    S4 -.->|Event Routing| A4
+    S4 -.->|Event Routing| S1
+    S4 -.->|Event Routing| S2
+    S4 -.->|Event Routing| S3
     
     %% MCP Integration
-    S1 -.->|OAuth Tokens| MCP1
-    S1 -.->|OAuth Tokens| MCP2
-    S1 -.->|OAuth Tokens| MCP3
+    S1 -->|Parameter Schemas| MCP1
+    S1 -->|Parameter Schemas| MCP2
+    S1 -->|Parameter Schemas| MCP3
+    S1 -->|Parameter Schemas| MCP4
     
-    RAC2 --> MCP1
-    RAC2 --> MCP2
-    RAC2 --> MCP3
+    S3 -->|Workflow Execution| MCP1
+    S3 -->|Workflow Execution| MCP2
+    S3 -->|Workflow Execution| MCP3
+    S3 -->|Workflow Execution| MCP4
     
-    MCP1 --> EXT2
-    MCP2 --> EXT3
-    MCP3 --> EXT4
+    %% External Service Integration
+    S1 -.->|OAuth2| EXT1
+    A2 -.->|LLM Calls| EXT2
+    A3 -.->|LLM Calls| EXT2
+    A4 -.->|LLM Calls| EXT2
+    S4 -.->|State Storage| EXT3
+    S4 -.->|Deployment| EXT4
     
-    %% Parameter Management
-    RAC3 --> S8
-    S8 --> RAC4
+    %% MCP to Google APIs
+    MCP1 -.->|Gmail API| EXT1
+    MCP2 -.->|Docs API| EXT1
+    MCP3 -.->|Calendar API| EXT1
+    MCP4 -.->|Drive API| EXT1
     
-    %% Content Generation
-    RAC2 --> LLM4
-    LLM4 --> RAC2
+    %% Styling
+    classDef agentClass fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef serviceClass fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef mcpClass fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef extClass fill:#fff3e0,stroke:#e65100,stroke-width:2px
     
-    %% OAuth Flow
-    UI1 --> EXT1
-    EXT1 --> S1
+    class A1,A2,A3,A4 agentClass
+    class S1,S2,S3,S4 serviceClass
+    class MCP1,MCP2,MCP3,MCP4 mcpClass
+    class EXT1,EXT2,EXT3,EXT4 extClass
     
     %% Styling
     classDef uiLayer fill:#e3f2fd,stroke:#333,stroke-width:2px,color:#000

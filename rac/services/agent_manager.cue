@@ -1,4 +1,4 @@
-package agents
+package services
 
 // =============================================
 // 🔹 AGENT MANAGER - PHASE 3 IMPLEMENTATION
@@ -28,7 +28,7 @@ AgentManager: {
         "capabilities_discovered": [] // Go directly to workflow discovery
         "workflow_intent_discovered": ["intent_analyst"] // Complete workflow patterns to analyst
         "intent_analysis_complete": ["workflow_generator"] // 5 PoC parameters to generator
-        "deterministic_workflow_generated": ["cue_generator"] // JSON workflow to CUE conversion
+        "workflow_generation_complete": ["cue_generator"] // JSON workflow to CUE conversion
         "cue_conversion_complete": ["workflow_validator"] // CUE to validation
         "validation_complete": ["workflow_executor"] // Validated workflow to execution
         "execution_completed": [] // End of pipeline
@@ -77,10 +77,8 @@ AgentManager: {
         timeout_thresholds: {
             personal_capabilities: "60s"
             intent_gatherer: "30s"
-            story_coaching: "45s"
             intent_analyst: "30s"
             workflow_generator: "120s"
-            workflow_editor: "60s"
         }
     }
     

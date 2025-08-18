@@ -65,7 +65,7 @@ workflow: {
 			id: "send_summary"
 			name: "Send email summary"
 			service: "gmail"
-			action: "send_email"
+			action: "send_message"
 			inputs: {
 				to: "${user.email}"
 				subject: "Daily Email Report"
@@ -121,13 +121,9 @@ workflow: {
 		"can_fulfill":          true,
 		"missing_info":         []string{},
 		"next_action":          "generate_workflow",
-		"user_parameters": []interface{}{
-			map[string]interface{}{
-				"name":     "report_frequency",
-				"type":     "string",
-				"required": true,
-				"default":  "daily",
-			},
+		"user_parameters": map[string]interface{}{
+			"report_frequency": "daily",
+			"email": testUser.Email,
 		},
 	}
 	
@@ -143,6 +139,7 @@ workflow: {
 		testUser,
 		intentAnalysis,
 		testOAuthToken,
+		"America/New_York",
 	)
 	
 	if err != nil {
@@ -218,6 +215,7 @@ workflow: {
 		testUser,
 		intentAnalysis,
 		"invalid_token",
+		"America/New_York",
 	)
 	
 	if err != nil {
@@ -255,7 +253,7 @@ func TestExecutionEngineServiceValidation(t *testing.T) {
 			{
 				ID:      "step1",
 				Service: "gmail",
-				Action:  "send_email",
+				Action:  "send_message",
 			},
 			{
 				ID:      "step2",
@@ -321,7 +319,7 @@ func TestMockMCPServerResponses(t *testing.T) {
 	t.Logf("✅ Service catalog retrieved successfully")
 	
 	// Test Gmail action
-	response, err := mcpService.ExecuteAction("gmail", "send_email", map[string]interface{}{
+	response, err := mcpService.ExecuteAction("gmail", "send_message", map[string]interface{}{
 		"to":      "test@example.com",
 		"subject": "Test Email",
 		"body":    "Test message",
@@ -339,10 +337,10 @@ func TestMockMCPServerResponses(t *testing.T) {
 		t.Error("Gmail response missing message_id")
 	}
 	
-	t.Logf("✅ Gmail send_email action successful: %v", response.Data)
+	t.Logf("✅ Gmail send_message action successful: %v", response.Data)
 	
 	// Test invalid OAuth token
-	_, err = mcpService.ExecuteAction("gmail", "send_email", map[string]interface{}{
+	_, err = mcpService.ExecuteAction("gmail", "send_message", map[string]interface{}{
 		"to": "test@example.com",
 	}, "invalid_token")
 	

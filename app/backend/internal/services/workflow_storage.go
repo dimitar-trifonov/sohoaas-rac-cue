@@ -1,18 +1,104 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"cuelang.org/go/cue"
+	"cuelang.org/go/cue/cuecontext"
 	"sohoaas-backend/internal/types"
 )
 
 // WorkflowStorageService handles storing generated CUE workflows to disk
 type WorkflowStorageService struct {
 	workflowsDir string
+}
+
+// parseCUEWorkflow parses a CUE workflow file into structured JSON
+func (w *WorkflowStorageService) parseCUEWorkflow(cueContent string, workflowFile *types.WorkflowFile) (*types.WorkflowFile, error) {
+	ctx := cuecontext.New()
+	
+	// Parse the CUE content (schema is already embedded in saved files)
+	value := ctx.CompileString(cueContent)
+	if value.Err() != nil {
+		return workflowFile, fmt.Errorf("failed to parse CUE content: %w", value.Err())
+	}
+	
+	// Extract workflow definition
+	workflowValue := value.LookupPath(cue.ParsePath("workflow"))
+	if workflowValue.Err() != nil {
+		return workflowFile, fmt.Errorf("workflow definition not found: %w", workflowValue.Err())
+	}
+	
+	// Convert to JSON for easier parsing
+	jsonBytes, err := workflowValue.MarshalJSON()
+	if err != nil {
+		return workflowFile, fmt.Errorf("failed to marshal workflow to JSON: %w", err)
+	}
+	
+	// Parse the JSON into a structured format
+	var workflowData map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &workflowData); err != nil {
+		return workflowFile, fmt.Errorf("failed to unmarshal workflow JSON: %w", err)
+	}
+	
+	// Create enhanced workflow file with parsed structure
+	enhancedWorkflow := *workflowFile
+	enhancedWorkflow.ParsedData = workflowData
+	
+	return &enhancedWorkflow, nil
+}
+
+// removePackageDeclaration removes the package declaration from CUE content to avoid conflicts
+func removePackageDeclaration(cueContent string) string {
+	lines := strings.Split(cueContent, "\n")
+	var filteredLines []string
+	
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Skip package declarations
+		if strings.HasPrefix(trimmed, "package ") {
+			continue
+		}
+		filteredLines = append(filteredLines, line)
+	}
+	
+	return strings.Join(filteredLines, "\n")
+}
+
+// injectSchemaIntoWorkflow embeds the deterministic workflow schema into the CUE content
+func (w *WorkflowStorageService) injectSchemaIntoWorkflow(cueContent string) (string, error) {
+	// Load the deterministic workflow schema
+	schemaPaths := []string{
+		filepath.Join("rac", "schemas", "deterministic_workflow.cue"),
+		filepath.Join("..", "..", "..", "..", "rac", "schemas", "deterministic_workflow.cue"),
+		filepath.Join("..", "..", "rac", "schemas", "deterministic_workflow.cue"),
+	}
+	
+	var schemaContent []byte
+	var err error
+	for _, schemaPath := range schemaPaths {
+		schemaContent, err = os.ReadFile(schemaPath)
+		if err == nil {
+			break
+		}
+	}
+	
+	if err != nil {
+		return cueContent, fmt.Errorf("failed to read schema file from any path: %w", err)
+	}
+	
+	// Remove package declaration from workflow content to avoid conflicts
+	workflowContentWithoutPackage := removePackageDeclaration(cueContent)
+	
+	// Combine schema with workflow content
+	enhancedContent := string(schemaContent) + "\n\n" + workflowContentWithoutPackage
+	
+	return enhancedContent, nil
 }
 
 // NewWorkflowStorageService creates a new workflow storage service
@@ -35,9 +121,9 @@ func (w *WorkflowStorageService) SaveWorkflow(userID string, workflowName string
 		return nil, fmt.Errorf("failed to create user directory: %w", err)
 	}
 
-	// Generate unique workflow ID and timestamp
+	// Generate unique workflow ID using timestamp only (no prefix)
 	timestamp := time.Now().Format("20060102_150405")
-	workflowID := fmt.Sprintf("%s_%s", workflowName, timestamp)
+	workflowID := timestamp
 	
 	// Create dedicated workflow folder
 	workflowDir := filepath.Join(userDir, workflowID)
@@ -45,7 +131,7 @@ func (w *WorkflowStorageService) SaveWorkflow(userID string, workflowName string
 		return nil, fmt.Errorf("failed to create workflow directory: %w", err)
 	}
 
-	// Create artifact subdirectories
+	// Create artifact subdirectories (unified structure)
 	artifactDirs := []string{"prompts", "responses", "metadata", "logs"}
 	for _, dir := range artifactDirs {
 		if err := os.MkdirAll(filepath.Join(workflowDir, dir), 0755); err != nil {
@@ -53,10 +139,16 @@ func (w *WorkflowStorageService) SaveWorkflow(userID string, workflowName string
 		}
 	}
 
-	// Save main CUE workflow file
-	cueFilename := fmt.Sprintf("%s.cue", workflowName)
+	// Inject schema content into CUE workflow before saving
+	enhancedCueContent, err := w.injectSchemaIntoWorkflow(cueContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to inject schema into workflow: %w", err)
+	}
+
+	// Save main CUE workflow file with embedded schema
+	cueFilename := "workflow.cue"
 	cueFilepath := filepath.Join(workflowDir, cueFilename)
-	if err := os.WriteFile(cueFilepath, []byte(cueContent), 0644); err != nil {
+	if err := os.WriteFile(cueFilepath, []byte(enhancedCueContent), 0644); err != nil {
 		return nil, fmt.Errorf("failed to write workflow file: %w", err)
 	}
 
@@ -101,9 +193,9 @@ func (w *WorkflowStorageService) SaveWorkflowArtifact(userID string, workflowID 
 	userDir := filepath.Join(w.workflowsDir, userID)
 	workflowDir := filepath.Join(userDir, workflowID)
 	
-	// Check if workflow directory exists
-	if _, err := os.Stat(workflowDir); os.IsNotExist(err) {
-		return fmt.Errorf("workflow directory not found: %s", workflowID)
+	// Create workflow directory if it doesn't exist
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		return fmt.Errorf("failed to create workflow directory: %w", err)
 	}
 	
 	// Create artifact file path
@@ -194,7 +286,7 @@ func (w *WorkflowStorageService) ListUserWorkflows(userID string) ([]*types.Work
 				workflowName = workflowName[:idx]
 			}
 			
-			workflows = append(workflows, &types.WorkflowFile{
+			workflowFile := &types.WorkflowFile{
 				ID:          fmt.Sprintf("%s_%s", userID, entry.Name()),
 				Name:        workflowName,
 				Description: fmt.Sprintf("Generated workflow: %s", workflowName),
@@ -205,7 +297,15 @@ func (w *WorkflowStorageService) ListUserWorkflows(userID string) ([]*types.Work
 				Content:     string(content),
 				CreatedAt:   info.ModTime(),
 				UpdatedAt:   info.ModTime(),
-			})
+			}
+			
+			// Parse CUE content into structured data
+			if parsedWorkflow, err := w.parseCUEWorkflow(string(content), workflowFile); err == nil {
+				workflowFile = parsedWorkflow
+			}
+			// Note: If parsing fails, we still return the file with raw content
+			
+			workflows = append(workflows, workflowFile)
 		} else if filepath.Ext(entry.Name()) == ".cue" {
 			// Legacy structure: direct .cue files in user directory
 			filePath := filepath.Join(userDir, entry.Name())
@@ -226,7 +326,7 @@ func (w *WorkflowStorageService) ListUserWorkflows(userID string) ([]*types.Work
 			}
 			workflowName = strings.TrimSuffix(workflowName, ".cue")
 			
-			workflows = append(workflows, &types.WorkflowFile{
+			workflowFile := &types.WorkflowFile{
 				ID:          fmt.Sprintf("%s_%s", userID, entry.Name()),
 				Name:        workflowName,
 				Description: fmt.Sprintf("Generated workflow: %s", workflowName),
@@ -237,7 +337,15 @@ func (w *WorkflowStorageService) ListUserWorkflows(userID string) ([]*types.Work
 				Content:     string(content),
 				CreatedAt:   info.ModTime(),
 				UpdatedAt:   info.ModTime(),
-			})
+			}
+			
+			// Parse CUE content into structured data
+			if parsedWorkflow, err := w.parseCUEWorkflow(string(content), workflowFile); err == nil {
+				workflowFile = parsedWorkflow
+			}
+			// Note: If parsing fails, we still return the file with raw content
+			
+			workflows = append(workflows, workflowFile)
 		}
 	}
 

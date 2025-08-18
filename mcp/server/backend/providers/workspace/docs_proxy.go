@@ -186,6 +186,60 @@ func (p *DocsProxy) GetServiceMetadata() ServiceMetadata {
 					"title": "Test Document",
 				},
 				RequiredFields: []string{"title"},
+				OutputSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Document creation response",
+					Properties: map[string]PropertySchema{
+						"document_id": {
+							Type:        "string",
+							Description: "Google Docs document ID",
+						},
+						"title": {
+							Type:        "string",
+							Description: "Document title",
+						},
+						"url": {
+							Type:        "string",
+							Description: "Shareable document URL",
+						},
+						"revision_id": {
+							Type:        "string",
+							Description: "Document revision ID",
+						},
+						"status": {
+							Type:        "string",
+							Description: "Creation status",
+						},
+						"created_at": {
+							Type:        "string",
+							Description: "ISO timestamp when created",
+						},
+						"api_duration_ms": {
+							Type:        "number",
+							Description: "API call duration in milliseconds",
+						},
+					},
+					Required: []string{"document_id", "title", "url", "status"},
+				},
+				ErrorSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "Document creation error response",
+					Properties: map[string]PropertySchema{
+						"error_code": {
+							Type:        "string",
+							Description: "Error code",
+						},
+						"error_message": {
+							Type:        "string",
+							Description: "Error message",
+						},
+						"details": {
+							Type:        "object",
+							Description: "Additional error details",
+						},
+					},
+					Required: []string{"error_code", "error_message"},
+				},
 			},
 			DocsFunctionGetDocument: {
 				Name:        DocsFunctionGetDocument,

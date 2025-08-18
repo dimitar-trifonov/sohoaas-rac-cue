@@ -18,11 +18,9 @@ graph TB
     subgraph "Core System States"
         S1[user_auth<br/>OAuth tokens & services]
         S2[personal_capabilities<br/>Available automations]
-        S3[daily_story_coaching<br/>Story analysis]
         S4[personal_chat<br/>Direct intent]
         S5[workflow_intent<br/>Analyzed intent + parameters]
         S6[generated_workflow<br/>RaC specification]
-        S7[workflow_validation<br/>Format & completeness check]
         S8[rac_execution<br/>Deterministic execution]
     end
     

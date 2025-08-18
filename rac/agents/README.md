@@ -27,12 +27,6 @@ This directory contains the RaC specifications for SOHOAAS's multi-agent archite
 - **Triggers**: User messages
 - **Output**: Classified intent with entities and confidence
 
-### 📖 Story Coaching Agent (`story_coaching.cue`)
-- **Type**: Autonomous Agent
-- **Role**: Analyze daily routines for automation opportunities
-- **Triggers**: Story coaching sessions
-- **Output**: Automation suggestions based on user stories
-
 ### 🔬 Intent Analyst Agent (`intent_analyst.cue`)
 - **Type**: Autonomous Agent
 - **Role**: Deep analysis and validation of extracted intents
@@ -44,12 +38,6 @@ This directory contains the RaC specifications for SOHOAAS's multi-agent archite
 - **Role**: Generate complete RaC workflows from validated intents
 - **Triggers**: Intent validation completion
 - **Output**: Complete RaC workflow definitions with MCP bindings
-
-### ✏️ Workflow Editor Agent (`workflow_editor.cue`)
-- **Type**: Autonomous Agent
-- **Role**: Validate and refine generated workflows
-- **Triggers**: Workflow generation or edit requests
-- **Output**: Validated, executable workflows
 
 ## Event-Driven Communication
 

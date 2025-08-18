@@ -63,7 +63,7 @@ type UserParameter struct {
 	Required    bool        `json:"required"`
 	Description string      `json:"description"`
 	Prompt      string      `json:"prompt"`
-	Default     interface{} `json:"default,omitempty"`
+	Default     interface{} `json:"default"`
 	Validation  string      `json:"validation,omitempty"`
 }
 
@@ -108,16 +108,17 @@ type AgentResponse struct {
 
 // WorkflowFile represents a generated CUE workflow file stored on disk
 type WorkflowFile struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"` // 'draft' | 'active' | 'completed' | 'error'
-	Filename    string    `json:"filename"`
-	Path        string    `json:"path"`
-	UserID      string    `json:"user_id"`
-	Content     string    `json:"content"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Status      string                 `json:"status"` // 'draft' | 'active' | 'completed' | 'error'
+	Filename    string                 `json:"filename"`
+	Path        string                 `json:"path"`
+	UserID      string                 `json:"user_id"`
+	Content     string                 `json:"content"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	ParsedData  map[string]interface{} `json:"parsed_data,omitempty"` // Parsed CUE workflow structure
 }
 
 // WorkflowExecution represents the execution state of a workflow
