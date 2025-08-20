@@ -30,15 +30,29 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
   const [isExecutingWorkflow, setIsExecutingWorkflow] = useState(false)
   const [userParameters, setUserParameters] = useState<Record<string, any>>({})
 
-  // Generate a unique key for this workflow's parameters
-  const getParameterStorageKey = (workflowName: string) => {
-    return `sohoaas_workflow_params_${workflowName.replace(/[^a-zA-Z0-9]/g, '_')}`
+  // Generate a unique key for this workflow's parameters using workflow_id
+  const getParameterStorageKey = (workflowId: string) => {
+    return `sohoaas_workflow_params_${workflowId}`
+  }
+
+  // Manage localStorage with 5-item limit (LRU cache)
+  const manageStorageLimit = () => {
+    try {
+      const keys = Object.keys(localStorage).filter(key => key.startsWith('sohoaas_workflow_params_'))
+      if (keys.length >= 5) {
+        // Remove oldest entries (simple approach - remove first found)
+        const keysToRemove = keys.slice(0, keys.length - 4)
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+      }
+    } catch (error) {
+      console.warn('Failed to manage storage limit:', error)
+    }
   }
 
   // Load saved parameters from localStorage
-  const loadSavedParameters = (workflowName: string): Record<string, any> => {
+  const loadSavedParameters = (workflowId: string): Record<string, any> => {
     try {
-      const storageKey = getParameterStorageKey(workflowName)
+      const storageKey = getParameterStorageKey(workflowId)
       const saved = localStorage.getItem(storageKey)
       return saved ? JSON.parse(saved) : {}
     } catch (error) {
@@ -48,9 +62,10 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
   }
 
   // Save parameters to localStorage
-  const saveParameters = (workflowName: string, params: Record<string, any>) => {
+  const saveParameters = (workflowId: string, params: Record<string, any>) => {
     try {
-      const storageKey = getParameterStorageKey(workflowName)
+      manageStorageLimit()
+      const storageKey = getParameterStorageKey(workflowId)
       localStorage.setItem(storageKey, JSON.stringify(params))
     } catch (error) {
       console.warn('Failed to save parameters:', error)
@@ -59,10 +74,10 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
 
   // Clear saved parameters for this workflow
   const clearSavedParameters = () => {
-    if (!workflow?.name) return
+    if (!workflow?.id) return
     
     try {
-      const storageKey = getParameterStorageKey(workflow.name)
+      const storageKey = getParameterStorageKey(workflow.id)
       localStorage.removeItem(storageKey)
       
       // Reset parameters to default values
@@ -99,7 +114,7 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
       setStepStates(initialStates)
       
       // Load saved parameters first, then merge with defaults
-      const savedParams = loadSavedParameters(workflow.name || 'unnamed_workflow')
+      const savedParams = loadSavedParameters(workflow.id || 'unnamed_workflow')
       const initialParams: Record<string, any> = {}
       
       // Check both direct user_parameters (legacy) and parsed_data.user_parameters (current)
@@ -202,8 +217,8 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
     setUserParameters(updatedParams)
   
     // Save parameters to localStorage whenever they change
-    if (workflow?.name) {
-      saveParameters(workflow.name, updatedParams)
+    if (workflow?.id) {
+      saveParameters(workflow.id, updatedParams)
     }
   }
 

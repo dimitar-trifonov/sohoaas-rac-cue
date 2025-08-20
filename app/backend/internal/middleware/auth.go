@@ -6,11 +6,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"sohoaas-backend/internal/services"
-	"sohoaas-backend/internal/types"
 )
 
-// AuthMiddleware validates OAuth2 tokens with MCP service
-func AuthMiddleware(mcpService *services.MCPService) gin.HandlerFunc {
+// FirebaseAuthMiddleware validates Firebase ID tokens
+func FirebaseAuthMiddleware(firebaseAuth *services.FirebaseAuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract token from Authorization header
 		authHeader := c.GetHeader("Authorization")
@@ -32,8 +31,8 @@ func AuthMiddleware(mcpService *services.MCPService) gin.HandlerFunc {
 		}
 
 		// Extract the token
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == "" {
+		idToken := strings.TrimPrefix(authHeader, "Bearer ")
+		if idToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Token is required",
 			})
@@ -41,23 +40,20 @@ func AuthMiddleware(mcpService *services.MCPService) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: Validate token with MCP service (to be implemented)
-		// For PoC: Create a mock user - services will be populated dynamically from MCP catalog
-		user := &types.User{
-			ID:    "mock_user_123",
-			Email: "user@example.com",
-			Name:  "Mock User",
-			OAuthTokens: map[string]interface{}{
-				"google": map[string]interface{}{
-					"access_token": token,
-				},
-			},
-			ConnectedServices: []string{}, // Will be populated dynamically from MCP catalog
+		// Validate Firebase ID token
+		user, err := firebaseAuth.ValidateIDToken(idToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid or expired token",
+				"details": err.Error(),
+			})
+			c.Abort()
+			return
 		}
 
 		// Store user and token in context for use by handlers
 		c.Set("user", user)
-		c.Set("token", token)
+		c.Set("token", idToken)
 		c.Next()
 	}
 }

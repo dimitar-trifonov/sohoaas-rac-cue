@@ -4,13 +4,14 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
-
 	"sohoaas-backend/internal/api"
 	"sohoaas-backend/internal/config"
 	"sohoaas-backend/internal/manager"
 	"sohoaas-backend/internal/middleware"
 	"sohoaas-backend/internal/services"
+	"sohoaas-backend/internal/storage"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -22,9 +23,22 @@ func main() {
 	// Initialize configuration
 	cfg := config.New()
 
+	// Initialize workflow storage service with pluggable backend first
+	workflowStorage, err := storage.CreateStorageFromEnv()
+	if err != nil {
+		log.Fatalf("Failed to initialize workflow storage: %v", err)
+	}
+	log.Printf("Initialized workflow storage: %s", workflowStorage.GetStorageType())
+
 	// Initialize services
 	mcpService := services.NewMCPService(cfg.MCP.BaseURL)
-	genkitService := services.NewGenkitService(cfg.OpenAI.APIKey, mcpService)
+	genkitService := services.NewGenkitService(cfg.OpenAI.APIKey, mcpService, workflowStorage)
+
+	// Initialize Firebase Authentication using environment variables
+	firebaseAuth, err := services.NewFirebaseAuthService()
+	if err != nil {
+		log.Fatalf("Failed to initialize Firebase Auth: %v", err)
+	}
 
 	// Initialize Agent Manager with all agents
 	agentManager := manager.NewAgentManager(genkitService, mcpService)
@@ -39,19 +53,16 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(middleware.CORS())
 
-	// Initialize workflow storage service
-	workflowsDir := cfg.WorkflowsDir
-	if workflowsDir == "" {
-		workflowsDir = "./generated_workflows"
-	}
-	workflowStorage := services.NewWorkflowStorageService(workflowsDir)
-
 	// Initialize execution engine
 	executionEngine := services.NewExecutionEngine(mcpService)
 
+	// Initialize token manager
+	tokenManager := services.NewTokenManager()
+	tokenManager.StartCleanupRoutine()
+
 	// Initialize API handler
-	apiHandler := api.NewHandler(agentManager, mcpService, workflowStorage, executionEngine)
-	api.SetupRoutes(router, apiHandler, middleware.AuthMiddleware(mcpService))
+	apiHandler := api.NewHandler(agentManager, mcpService, workflowStorage, executionEngine, tokenManager)
+	api.SetupRoutes(router, apiHandler, middleware.FirebaseAuthMiddleware(firebaseAuth))
 
 	// Start server
 	port := cfg.Port

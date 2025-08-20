@@ -1,21 +1,35 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthStore, useWorkflowStore, useUIStore, initializeStores } from './stores'
 import { AuthStatus, WorkflowCreator, WorkflowList } from './components'
 import { Header, Navigation, Container } from './components/layout'
 import { Button, Card } from './components/ui'
+import { UnauthorizedModal } from './components/UnauthorizedModal'
 import { cn, typographyVariants } from './design-system'
 import { sohoaasApi } from './services/api'
 
 function App() {
   // External state management - outside React rendering cycle
-  const { isAuthenticated, checkAuth } = useAuthStore()
+  const { isAuthenticated, checkAuth, error, clearError } = useAuthStore()
   const { workflows, loadWorkflows } = useWorkflowStore()
   const { activeTab, setActiveTab } = useUIStore()
+  const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false)
 
   useEffect(() => {
     // Initialize all stores on app start
     initializeStores()
   }, [])
+
+  // Handle unauthorized access error
+  useEffect(() => {
+    if (error === 'UNAUTHORIZED_ACCESS') {
+      setShowUnauthorizedModal(true)
+    }
+  }, [error])
+
+  const handleCloseUnauthorizedModal = () => {
+    setShowUnauthorizedModal(false)
+    clearError()
+  }
 
   const checkAuthStatus = () => {
     checkAuth()
@@ -38,11 +52,14 @@ function App() {
       // Get user's timezone for backend processing
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       
-      // Get proper auth token using the API service
+      // Get Firebase ID token for backend authentication
       const authToken = await sohoaasApi.getAuthToken()
       if (!authToken?.access_token) {
         throw new Error('No authentication token available')
       }
+
+      // Google access token is now managed securely by the backend
+      // No need to retrieve it in frontend
 
       // Call backend execution API
       const response = await fetch('http://localhost:8081/api/v1/workflow/execute', {
@@ -84,58 +101,9 @@ function App() {
   }
 
   const handleLogin = async () => {
-    try {
-      // Get the OAuth URL from the MCP service via nginx proxy
-      const response = await fetch('http://localhost:3000/api/auth/login')
-      const data = await response.json()
-      
-      if (data.auth_url) {
-        // Open OAuth in a centered popup window
-        const popup = window.open(
-          data.auth_url,
-          'oauth_popup',
-          'width=500,height=600,scrollbars=yes,resizable=yes,status=yes,location=yes,toolbar=no,menubar=no'
-        )
-        
-        // Listen for messages from the popup
-        const handleMessage = (event: MessageEvent) => {
-          // Verify origin for security
-          if (event.origin !== window.location.origin) {
-            return
-          }
-          
-          if (event.data.type === 'OAUTH_SUCCESS') {
-            // Authentication successful
-            console.log('OAuth success received from popup')
-            popup?.close()
-            checkAuth() // Refresh auth status
-            window.removeEventListener('message', handleMessage)
-          } else if (event.data.type === 'OAUTH_ERROR') {
-            // Authentication failed
-            console.error('OAuth error:', event.data.error)
-            popup?.close()
-            window.removeEventListener('message', handleMessage)
-          }
-        }
-        
-        window.addEventListener('message', handleMessage)
-        
-        // Fallback: Check if popup was closed manually
-        const checkClosed = setInterval(() => {
-          if (popup?.closed) {
-            clearInterval(checkClosed)
-            window.removeEventListener('message', handleMessage)
-            // Check auth status in case authentication completed
-            setTimeout(() => checkAuth(), 1000)
-          }
-        }, 1000)
-        
-      } else {
-        console.error('No auth_url received:', data)
-      }
-    } catch (error) {
-      console.error('Failed to get OAuth URL:', error)
-    }
+    // Use Firebase Auth for authentication
+    const { login } = useAuthStore.getState()
+    await login()
   }
 
   // Demo mode detection (for large screen presentations)
@@ -213,6 +181,12 @@ function App() {
           )}
         </Container>
       </main>
+      
+      {/* Unauthorized Access Modal */}
+      <UnauthorizedModal 
+        isOpen={showUnauthorizedModal}
+        onClose={handleCloseUnauthorizedModal}
+      />
     </div>
   )
 }

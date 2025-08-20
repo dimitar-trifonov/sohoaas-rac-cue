@@ -101,50 +101,13 @@ func (cb *CUEBuilder) validateWorkflow(workflow *WorkflowJSON) error {
 		return fmt.Errorf("workflow must have at least one step")
 	}
 
-	// Get MCP catalog for validation
-	catalog, err := cb.mcpService.GetServiceCatalog()
-	if err != nil {
-		return fmt.Errorf("failed to get MCP catalog for validation: %w", err)
-	}
-
-	// Parse services from catalog
-	parser := NewMCPCatalogParser()
-	servicesData, err := parser.ParseServicesFromCatalog(catalog)
-	if err != nil {
-		return fmt.Errorf("failed to parse MCP services: %w", err)
-	}
-
-	// Validate each step
+	// Basic validation only - service validation is handled by execution engine
 	for i, step := range workflow.Steps {
 		if step.ID == "" {
 			return fmt.Errorf("step %d: ID is required", i)
 		}
-		if step.Service == "" {
-			return fmt.Errorf("step %d (%s): service is required", i, step.ID)
-		}
 		if step.Action == "" {
 			return fmt.Errorf("step %d (%s): action is required", i, step.ID)
-		}
-
-		// Validate service exists in MCP catalog
-		serviceData, exists := servicesData[step.Service]
-		if !exists {
-			return fmt.Errorf("step %d (%s): unknown service '%s' - not found in MCP catalog", i, step.ID, step.Service)
-		}
-
-		// Validate action exists for service
-		serviceMap, ok := serviceData.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("step %d (%s): invalid service data for '%s'", i, step.ID, step.Service)
-		}
-
-		functions, ok := serviceMap["functions"].(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("step %d (%s): no functions found for service '%s'", i, step.ID, step.Service)
-		}
-
-		if _, actionExists := functions[step.Action]; !actionExists {
-			return fmt.Errorf("step %d (%s): unknown action '%s' for service '%s'", i, step.ID, step.Action, step.Service)
 		}
 	}
 

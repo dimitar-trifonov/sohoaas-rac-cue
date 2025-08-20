@@ -1,20 +1,58 @@
-// SOHOAAS Authentication Store
+// SOHOAAS Authentication Store with Firebase Auth
 // External state management using Zustand - outside React rendering cycle
-// Following the SOHOAAS 5-agent PoC system architecture
+// Following the SOHOAAS multi-user architecture
 
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider, type User as FirebaseUser } from 'firebase/auth'
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { auth, googleProvider, db } from '../config/firebase'
 import type { AuthState, User } from '../types'
-import { sohoaasApi } from '../services/api'
+
+// Firestore-based user access control
+const checkUserAccess = async (email: string, uid: string): Promise<boolean> => {
+  try {
+    // Check if user exists in allowed_users collection
+    const userDoc = await getDoc(doc(db, 'allowed_users', email))
+    
+    if (userDoc.exists()) {
+      const userData = userDoc.data()
+      
+      // Update user's UID and last login if not set
+      if (!userData.uid || userData.uid !== uid) {
+        await updateDoc(doc(db, 'allowed_users', email), {
+          uid: uid,
+          lastLogin: serverTimestamp()
+        })
+      } else {
+        // Just update last login
+        await updateDoc(doc(db, 'allowed_users', email), {
+          lastLogin: serverTimestamp()
+        })
+      }
+      
+      return userData.active !== false // Default to true if not specified
+    }
+    
+    return false // User not in allowed list
+  } catch (error) {
+    console.error('Error checking user access:', error)
+    return false
+  }
+}
+
 
 interface AuthStore extends AuthState {
   // Actions
   checkAuth: () => Promise<void>
   login: () => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   refreshToken: () => Promise<void>
   setUser: (user: User) => void
   clearError: () => void
+  firebaseUser: FirebaseUser | null
+  googleAccessToken: string | null
+  setGoogleAccessToken: (token: string) => void
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -25,102 +63,108 @@ export const useAuthStore = create<AuthStore>()(
     user: null,
     loading: false,
     error: null,
+    firebaseUser: null,
+    googleAccessToken: null,
 
     // Actions
     checkAuth: async () => {
       set({ loading: true, error: null })
       
-      try {
-        const token = await sohoaasApi.getAuthToken()
-        
-        if (token?.access_token && token.valid) {
-          set({ 
-            isAuthenticated: true, 
-            token,
-            loading: false 
-          })
-          
-          // Try to get user capabilities to build user profile
-          const capabilities = await sohoaasApi.getPersonalCapabilities(token.access_token)
-          if (capabilities) {
-            const user: User = {
-              user_id: `frontend_user_${Date.now()}`,
-              oauth_tokens: {
-                google: {
-                  access_token: token.access_token,
-                  token_type: token.token_type
-                }
-              },
-              connected_services: ['gmail', 'calendar', 'docs', 'drive']
-            }
-            set({ user })
-          }
-          
-          // Load workflows after successful authentication
-          try {
-            const { useWorkflowStore } = await import('./workflowStore')
-            await useWorkflowStore.getState().loadWorkflows()
-          } catch (error) {
-            console.error('Failed to load workflows after authentication:', error)
-          }
-        } else {
-          set({ 
-            isAuthenticated: false, 
-            token: null, 
-            user: null,
-            loading: false 
-          })
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error)
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          user: null,
-          loading: false,
-          error: error instanceof Error ? error.message : 'Authentication check failed'
-        })
-      }
+      // Firebase auth state is handled by onAuthStateChanged listener
+      // This method is kept for compatibility but auth state is managed by Firebase
+      set({ loading: false })
     },
 
     login: async () => {
       set({ loading: true, error: null })
       
       try {
-        await sohoaasApi.initiateGoogleAuth()
+        const result = await signInWithPopup(auth, googleProvider)
+        const user = result.user
         
-        // Poll for auth status after login attempt
-        const pollAuth = async () => {
-          const token = await sohoaasApi.getAuthToken()
-          if (token?.access_token && token.valid) {
-            set({ 
-              isAuthenticated: true, 
-              token,
-              loading: false 
-            })
-            return true
-          }
-          return false
+        // Check user access in Firestore
+        const hasAccess = await checkUserAccess(user.email || '', user.uid)
+        if (!hasAccess) {
+          await signOut(auth)
+          set({ 
+            loading: false,
+            error: 'UNAUTHORIZED_ACCESS'
+          })
+          return
         }
 
-        // Poll every 2 seconds for up to 30 seconds
-        let attempts = 0
-        const maxAttempts = 15
+        // Get the ID token for backend authentication
+        const idToken = await user.getIdToken()
         
-        const pollInterval = setInterval(async () => {
-          attempts++
-          const success = await pollAuth()
-          
-          if (success || attempts >= maxAttempts) {
-            clearInterval(pollInterval)
-            if (!success) {
-              set({ 
-                loading: false,
-                error: 'Login timeout - please try again'
+        // Store Google access token securely in backend after successful login
+        const credential = GoogleAuthProvider.credentialFromResult(result)
+        if (credential?.accessToken) {
+          try {
+            // Send token to backend for secure storage
+            const backendUrl = import.meta.env.VITE_BACKEND_URL
+            console.log('Storing Google token at:', `${backendUrl}/api/v1/auth/store-google-token`)
+            
+            const response = await fetch(`${backendUrl}/api/v1/auth/store-google-token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${await user.getIdToken()}`,
+              },
+              body: JSON.stringify({
+                google_access_token: credential.accessToken
               })
+            })
+            
+            if (response.ok) {
+              const responseData = await response.json()
+              console.log('Google access token stored securely in backend:', responseData)
+              // Remove from frontend state for security
+              set({ googleAccessToken: null })
+            } else {
+              const errorText = await response.text()
+              console.error('Failed to store Google token in backend:', response.status, errorText)
+              // Fallback: keep in frontend temporarily
+              set({ googleAccessToken: credential.accessToken })
             }
+          } catch (error) {
+            console.error('Error storing Google token in backend:', error)
+            // Fallback: keep in frontend temporarily
+            set({ googleAccessToken: credential.accessToken })
           }
-        }, 2000)
+        } else {
+          console.warn('No Google access token received from Firebase Auth')
+        }
+        
+        // Create user object for SOHOAAS backend
+        const sohoaasUser: User = {
+          user_id: user.uid,
+          email: user.email || '',
+          name: user.displayName || '',
+          oauth_tokens: {
+            google: {
+              access_token: '', // Token now stored securely in backend
+              token_type: 'Bearer'
+            }
+          },
+          connected_services: ['gmail', 'calendar', 'docs', 'drive']
+        }
+
+        set({ 
+          isAuthenticated: true, 
+          token: { access_token: idToken, token_type: 'Bearer', expires_in: 3600, valid: true },
+          user: sohoaasUser,
+          firebaseUser: user,
+          googleAccessToken: null, // Token now stored securely in backend
+          loading: false 
+        })
+
+        // Load workflows after successful authentication
+        try {
+          const { useWorkflowStore } = await import('./workflowStore')
+          await useWorkflowStore.getState().loadWorkflows()
+        } catch (error) {
+          console.error('Failed to load workflows after authentication:', error)
+        }
 
       } catch (error) {
         console.error('Login failed:', error)
@@ -131,19 +175,36 @@ export const useAuthStore = create<AuthStore>()(
       }
     },
 
-    logout: () => {
-      set({ 
-        isAuthenticated: false, 
-        token: null, 
-        user: null,
-        loading: false,
-        error: null
-      })
+    logout: async () => {
+      try {
+        await signOut(auth)
+        set({ 
+          isAuthenticated: false, 
+          token: null, 
+          user: null,
+          firebaseUser: null,
+          loading: false,
+          error: null
+        })
+      } catch (error) {
+        console.error('Logout failed:', error)
+        set({ error: error instanceof Error ? error.message : 'Logout failed' })
+      }
     },
 
     refreshToken: async () => {
-      const { checkAuth } = get()
-      await checkAuth()
+      const { firebaseUser } = get()
+      if (firebaseUser) {
+        try {
+          const idToken = await firebaseUser.getIdToken(true) // Force refresh
+          set({ 
+            token: { access_token: idToken, token_type: 'Bearer', expires_in: 3600, valid: true }
+          })
+        } catch (error) {
+          console.error('Token refresh failed:', error)
+          set({ error: error instanceof Error ? error.message : 'Token refresh failed' })
+        }
+      }
     },
 
     setUser: (user: User) => {
@@ -152,9 +213,89 @@ export const useAuthStore = create<AuthStore>()(
 
     clearError: () => {
       set({ error: null })
+    },
+
+    setGoogleAccessToken: (token: string) => {
+      set({ googleAccessToken: token })
     }
   }))
 )
+
+// Firebase auth state listener
+onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+  // const store = useAuthStore.getState() // Removed unused variable
+  const set = (updates: Partial<AuthStore>) => {
+    useAuthStore.setState(updates)
+  }
+  
+  if (firebaseUser) {
+    // Check user access in Firestore
+    const hasAccess = await checkUserAccess(firebaseUser.email || '', firebaseUser.uid)
+    if (!hasAccess) {
+      await signOut(auth)
+      set({ 
+        isAuthenticated: false,
+        token: null,
+        user: null,
+        firebaseUser: null,
+        error: 'UNAUTHORIZED_ACCESS'
+      })
+      return
+    }
+
+    try {
+      const idToken = await firebaseUser.getIdToken()
+      
+      const sohoaasUser: User = {
+        user_id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        name: firebaseUser.displayName || '',
+        oauth_tokens: {
+          google: {
+            access_token: idToken,
+            token_type: 'Bearer'
+          }
+        },
+        connected_services: ['gmail', 'calendar', 'docs', 'drive']
+      }
+
+      set({ 
+        isAuthenticated: true, 
+        token: { access_token: idToken, token_type: 'Bearer', expires_in: 3600, valid: true },
+        user: sohoaasUser,
+        firebaseUser: firebaseUser,
+        loading: false,
+        error: null
+      })
+
+      // Load workflows after successful authentication
+      try {
+        const { useWorkflowStore } = await import('./workflowStore')
+        await useWorkflowStore.getState().loadWorkflows()
+      } catch (error) {
+        console.error('Failed to load workflows after authentication:', error)
+      }
+    } catch (error) {
+      console.error('Failed to get ID token:', error)
+      set({ 
+        isAuthenticated: false,
+        token: null,
+        user: null,
+        firebaseUser: null,
+        error: error instanceof Error ? error.message : 'Authentication failed'
+      })
+    }
+  } else {
+    set({ 
+      isAuthenticated: false, 
+      token: null, 
+      user: null,
+      firebaseUser: null,
+      loading: false,
+      error: null
+    })
+  }
+})
 
 // Auto-refresh token every 30 minutes
 setInterval(() => {

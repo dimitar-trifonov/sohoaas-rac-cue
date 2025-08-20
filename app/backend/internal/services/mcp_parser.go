@@ -156,7 +156,7 @@ func (p *MCPCatalogParser) BuildServiceCapabilities(mcpCatalog interface{}, hasG
 
 
 
-// ExtractServiceNames extracts all service names from MCP catalog (eliminates duplicate logic)
+// ExtractServiceNames extracts all service names from MCP catalog
 func (p *MCPCatalogParser) ExtractServiceNames(mcpCatalog map[string]interface{}) ([]string, error) {
 	servicesData, err := p.ParseServicesFromCatalog(mcpCatalog)
 	if err != nil {
@@ -169,29 +169,6 @@ func (p *MCPCatalogParser) ExtractServiceNames(mcpCatalog map[string]interface{}
 	}
 	
 	return serviceNames, nil
-}
-
-// FormatServicesForPrompt formats service list for LLM prompts (eliminates duplicate logic)
-func (p *MCPCatalogParser) FormatServicesForPrompt(mcpCatalog map[string]interface{}) (string, error) {
-	serviceNames, err := p.ExtractServiceNames(mcpCatalog)
-	if err != nil {
-		return "", err
-	}
-	
-	if len(serviceNames) == 0 {
-		return "No services available", nil
-	}
-	
-	// Create formatted string for prompts
-	result := ""
-	for i, serviceName := range serviceNames {
-		if i > 0 {
-			result += ", "
-		}
-		result += serviceName
-	}
-	
-	return result, nil
 }
 
 // BuildAvailableServicesSection creates the available services section for LLM prompts

@@ -22,6 +22,10 @@ func SetupRoutes(router *gin.Engine, handler *Handler, authMiddleware gin.Handle
 		protected := v1.Group("/")
 		protected.Use(authMiddleware)
 		{
+			// Token management endpoints
+			protected.POST("/auth/store-google-token", handler.StoreGoogleToken)
+			protected.GET("/auth/token-info", handler.GetTokenInfo)
+			
 			// Agent management
 			protected.GET("/agents", handler.GetAgents)
 			
@@ -41,14 +45,14 @@ func SetupRoutes(router *gin.Engine, handler *Handler, authMiddleware gin.Handle
 			// Workflow execution
 			protected.POST("/workflow/execute", handler.ExecuteWorkflow)
 			
-			// User services
-			protected.GET("/services", handler.GetUserServices)
-			
 			// Workflow management
 			protected.GET("/workflows", handler.GetUserWorkflows)
 			protected.GET("/workflows/:id", handler.GetWorkflow)
 			
-			// Testing and validation endpoints
+			// User services
+			protected.GET("/services", handler.GetUserServices)
+			
+			// Testing and validation
 			protected.POST("/test/pipeline", handler.TestCompleteWorkflowPipeline)
 			protected.GET("/validate/catalog", handler.ValidateServiceCatalog)
 		}

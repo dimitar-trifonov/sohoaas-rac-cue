@@ -15,30 +15,50 @@ import type {
 class SOHOAASApiService {
   // Use environment variables for Docker deployment, fallback to localhost for development
   private readonly PROXY_BASE_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3000'
-  private readonly MCP_BASE_URL = import.meta.env.VITE_MCP_URL || 'http://localhost:8080'
   private readonly BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081'
   
   // Authentication & Token Management
   async getAuthToken(): Promise<AuthToken | null> {
     try {
-      // Try nginx proxy first, fallback to direct MCP
-      const urls = [`${this.PROXY_BASE_URL}/api/auth/token`, `${this.MCP_BASE_URL}/api/auth/token`]
+      // Get Firebase ID token for backend authentication
+      const { useAuthStore } = await import('../stores/authStore')
+      const authState = useAuthStore.getState()
       
-      for (const url of urls) {
-        try {
-          const response = await fetch(url)
-          if (response.ok) {
-            return await response.json()
-          }
-        } catch (error) {
-          console.warn(`Failed to get token from ${url}:`, error)
-          continue
+      if (authState.isAuthenticated && authState.token) {
+        return authState.token
+      }
+      
+      // If not authenticated or no token, try to refresh
+      if (authState.firebaseUser) {
+        const idToken = await authState.firebaseUser.getIdToken(true)
+        return {
+          access_token: idToken,
+          token_type: 'Bearer',
+          expires_in: 3600,
+          valid: true
         }
       }
       
-      throw new Error('All auth token endpoints failed')
+      return null
     } catch (error) {
-      console.error('Failed to get auth token:', error)
+      console.error('Failed to get Firebase auth token:', error)
+      return null
+    }
+  }
+
+  // Get Google API access token for MCP service calls
+  async getGoogleAccessToken(): Promise<string | null> {
+    try {
+      const { useAuthStore } = await import('../stores/authStore')
+      const authState = useAuthStore.getState()
+      
+      if (authState.isAuthenticated && authState.googleAccessToken) {
+        return authState.googleAccessToken
+      }
+      
+      return null
+    } catch (error) {
+      console.error('Failed to get Google access token:', error)
       return null
     }
   }
@@ -49,40 +69,11 @@ class SOHOAASApiService {
   }
 
   async initiateGoogleAuth(): Promise<void> {
-    // Use nginx proxy for OAuth2 flow to handle callbacks properly
-    const authUrl = `${this.PROXY_BASE_URL}/api/auth/login`
-    
-    // Open OAuth2 window and listen for completion
-    const authWindow = window.open(authUrl, 'oauth2', 'width=500,height=600,scrollbars=yes,resizable=yes')
-    
-    // Poll for auth completion
-    const pollAuth = () => {
-      try {
-        if (authWindow?.closed) {
-          // Window closed, check auth status
-          setTimeout(() => this.checkAuthStatus(), 1000)
-          return
-        }
-        
-        // Check if we can access the window (same origin after callback)
-        try {
-          const url = authWindow?.location?.href
-          if (url && url.includes('auth_success=true')) {
-            authWindow.close()
-            setTimeout(() => this.checkAuthStatus(), 1000)
-            return
-          }
-        } catch (e) {
-          // Cross-origin, continue polling
-        }
-        
-        setTimeout(pollAuth, 1000)
-      } catch (error) {
-        console.error('OAuth polling error:', error)
-      }
-    }
-    
-    setTimeout(pollAuth, 1000)
+    // Firebase Auth handles Google authentication directly
+    // This method is kept for compatibility but delegates to the auth store
+    const { useAuthStore } = await import('../stores/authStore')
+    const { login } = useAuthStore.getState()
+    await login()
   }
 
   // Service Catalog & Capabilities

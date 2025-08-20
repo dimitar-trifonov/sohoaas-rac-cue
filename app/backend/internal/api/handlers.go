@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"sohoaas-backend/internal/manager"
 	"sohoaas-backend/internal/services"
+	"sohoaas-backend/internal/storage"
 	"sohoaas-backend/internal/types"
-
-	"github.com/gin-gonic/gin"
 )
 
 // getMapKeys returns the keys of a map[string]interface{} for logging
@@ -22,21 +22,23 @@ func getMapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
-// Handler contains all the dependencies for API handlers
+// Handler contains all the dependencies needed for API handlers
 type Handler struct {
 	agentManager    *manager.AgentManager
 	mcpService      *services.MCPService
-	workflowStorage *services.WorkflowStorageService
+	workflowStorage storage.WorkflowStorage
 	executionEngine *services.ExecutionEngine
+	tokenManager    *services.TokenManager
 }
 
 // NewHandler creates a new API handler instance
-func NewHandler(agentManager *manager.AgentManager, mcpService *services.MCPService, workflowStorage *services.WorkflowStorageService, executionEngine *services.ExecutionEngine) *Handler {
+func NewHandler(agentManager *manager.AgentManager, mcpService *services.MCPService, workflowStorage storage.WorkflowStorage, executionEngine *services.ExecutionEngine, tokenManager *services.TokenManager) *Handler {
 	return &Handler{
 		agentManager:    agentManager,
 		mcpService:      mcpService,
 		workflowStorage: workflowStorage,
 		executionEngine: executionEngine,
+		tokenManager:    tokenManager,
 	}
 }
 
@@ -269,6 +271,85 @@ func (h *Handler) GenerateWorkflow(c *gin.Context) {
 	})
 }
 
+// StoreGoogleToken securely stores a Google OAuth2 token for the authenticated user
+func (h *Handler) StoreGoogleToken(c *gin.Context) {
+	var request struct {
+		GoogleAccessToken string `json:"google_access_token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid token storage request",
+		})
+		return
+	}
+
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not found in context",
+		})
+		return
+	}
+
+	userObj, ok := user.(*types.User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Invalid user object",
+		})
+		return
+	}
+
+	// Store token securely in backend
+	err := h.tokenManager.StoreGoogleToken(userObj.ID, userObj.Email, request.GoogleAccessToken)
+	if err != nil {
+		log.Printf("[API] Failed to store Google token for user %s: %v", userObj.ID, err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Failed to store Google token",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[API] Successfully stored Google token for user %s (%s)", userObj.ID, userObj.Email)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Google token stored successfully",
+		"user_id": userObj.ID,
+	})
+}
+
+// GetTokenInfo returns token metadata for the authenticated user
+func (h *Handler) GetTokenInfo(c *gin.Context) {
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not found in context",
+		})
+		return
+	}
+
+	userObj, ok := user.(*types.User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Invalid user object",
+		})
+		return
+	}
+
+	tokenInfo, err := h.tokenManager.GetTokenInfo(userObj.ID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "No Google token found",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token_info": tokenInfo,
+	})
+}
+
 // ExecuteWorkflow executes a stored workflow by ID
 func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 	var request struct {
@@ -292,16 +373,7 @@ func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 		return
 	}
 	
-	token, exists := c.Get("token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Token not found in context",
-		})
-		return
-	}
-	
 	userObj := user.(*types.User)
-	tokenStr := token.(string)
 	
 	log.Printf("[API] === WORKFLOW EXECUTION STARTED ===")
 	log.Printf("[API] User: %s", userObj.ID)
@@ -333,13 +405,26 @@ func (h *Handler) ExecuteWorkflow(c *gin.Context) {
 	
 	log.Printf("[API] Created execution plan: %s", execution.ID)
 	
+	// Get Google access token from secure backend storage
+	mcpToken, err := h.tokenManager.GetGoogleToken(userObj.ID)
+	if err != nil {
+		log.Printf("[API] No Google token found for user %s: %v", userObj.ID, err)
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Google token required for workflow execution",
+			"details": "Please authenticate with Google Workspace first",
+		})
+		return
+	}
+
+	log.Printf("[API] Using stored Google token for user %s (length: %d)", userObj.ID, len(mcpToken))
+	
 	// Prepare execution plan using the execution engine
 	executionPlan, err := h.executionEngine.PrepareExecution(
 		workflow.Content, 
 		userObj.ID, 
 		userObj, 
 		request.UserParameters, 
-		tokenStr,
+		mcpToken,
 		request.UserTimezone,
 	)
 	if err != nil {
@@ -432,34 +517,68 @@ func (h *Handler) GetUserServices(c *gin.Context) {
 
 // GetUserWorkflows retrieves user's saved CUE workflow files
 func (h *Handler) GetUserWorkflows(c *gin.Context) {
+	log.Printf("[API] === GET USER WORKFLOWS REQUEST ===")
+	log.Printf("[API] Request Method: %s, URL: %s", c.Request.Method, c.Request.URL.String())
+	
 	user, exists := c.Get("user")
 	if !exists {
+		log.Printf("[API] ERROR: User not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "User not found in context",
 		})
 		return
 	}
 
-	userObj := user.(*types.User)
-
-	workflows, err := h.workflowStorage.ListUserWorkflows(userObj.ID)
-	if err != nil {
+	userObj, ok := user.(*types.User)
+	if !ok {
+		log.Printf("[API] ERROR: Invalid user type in context: %T", user)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get user workflows",
+			"error": "Invalid user object",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	log.Printf("[API] User ID: %s, Email: %s", userObj.ID, userObj.Email)
+	log.Printf("[API] Storage type: %s", h.workflowStorage.GetStorageType())
+
+	workflows, err := h.workflowStorage.ListUserWorkflows(userObj.ID)
+	if err != nil {
+		log.Printf("[API] ERROR: Failed to list workflows for user %s: %v", userObj.ID, err)
+		log.Printf("[API] Error type: %T", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to get user workflows",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	log.Printf("[API] SUCCESS: Found %d workflows for user %s", len(workflows), userObj.ID)
+	for i, workflow := range workflows {
+		log.Printf("[API] Workflow %d: ID=%s, Name=%s, Content length=%d", i+1, workflow.ID, workflow.Name, len(workflow.Content))
+		contentPreview := workflow.Content
+		if len(contentPreview) > 200 {
+			contentPreview = contentPreview[:200] + "..."
+		}
+		log.Printf("[API] Workflow %d Content preview: %s", i+1, contentPreview)
+	}
+
+	response := gin.H{
 		"count":     len(workflows),
 		"workflows": workflows,
-	})
+	}
+	log.Printf("[API] Response structure: %+v", response)
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetWorkflow retrieves a specific workflow file by ID
 func (h *Handler) GetWorkflow(c *gin.Context) {
 	workflowID := c.Param("id")
+	log.Printf("[API] === GET SPECIFIC WORKFLOW REQUEST ===")
+	log.Printf("[API] Workflow ID: %s", workflowID)
+	
 	if workflowID == "" {
+		log.Printf("[API] ERROR: Workflow ID is required")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Workflow ID is required",
 		})
@@ -468,6 +587,7 @@ func (h *Handler) GetWorkflow(c *gin.Context) {
 
 	user, exists := c.Get("user")
 	if !exists {
+		log.Printf("[API] ERROR: User not found in context")
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "User not found in context",
 		})
@@ -475,18 +595,33 @@ func (h *Handler) GetWorkflow(c *gin.Context) {
 	}
 
 	userObj := user.(*types.User)
+	log.Printf("[API] User ID: %s, Email: %s", userObj.ID, userObj.Email)
 
 	workflow, err := h.workflowStorage.GetWorkflow(userObj.ID, workflowID)
 	if err != nil {
+		log.Printf("[API] ERROR: Failed to get workflow %s for user %s: %v", workflowID, userObj.ID, err)
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Workflow not found",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	log.Printf("[API] SUCCESS: Retrieved workflow %s", workflow.ID)
+	log.Printf("[API] Workflow Name: %s", workflow.Name)
+	log.Printf("[API] Workflow Content length: %d", len(workflow.Content))
+	
+	contentPreview := workflow.Content
+	if len(contentPreview) > 300 {
+		contentPreview = contentPreview[:300] + "..."
+	}
+	log.Printf("[API] Workflow Content preview: %s", contentPreview)
+
+	response := gin.H{
 		"workflow": workflow,
-	})
+	}
+	log.Printf("[API] Sending workflow response to frontend")
+
+	c.JSON(http.StatusOK, response)
 }
 
 // TestCompleteWorkflowPipeline tests the complete end-to-end workflow pipeline

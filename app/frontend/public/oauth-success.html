@@ -65,10 +65,11 @@
             try {
                 // Check if we're in a popup window
                 if (window.opener && !window.opener.closed) {
-                    // Send success message to parent window
+                    // Send success message to parent window with MCP OAuth completion
                     window.opener.postMessage({
-                        type: 'OAUTH_SUCCESS',
-                        timestamp: Date.now()
+                        type: 'MCP_OAUTH_SUCCESS',
+                        timestamp: Date.now(),
+                        message: 'Google Workspace OAuth completed successfully'
                     }, window.location.origin);
                     
                     // Close the popup after a short delay

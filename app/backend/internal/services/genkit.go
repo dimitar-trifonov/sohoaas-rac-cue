@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"sohoaas-backend/internal/storage"
 	"sohoaas-backend/internal/types"
 
 	"github.com/firebase/genkit/go/ai"
@@ -23,7 +24,7 @@ type GenkitService struct {
 	genkit                   *genkit.Genkit
 	mcpService               *MCPService
 	mcpParser                *MCPCatalogParser
-	workflowStorage          *WorkflowStorageService
+	workflowStorage          storage.WorkflowStorage
 	personalCapabilitiesFlow *core.Flow[map[string]interface{}, map[string]interface{}, struct{}]
 	intentGathererFlow       *core.Flow[map[string]interface{}, map[string]interface{}, struct{}]
 	intentAnalystFlow        *core.Flow[IntentAnalystInput, IntentAnalystOutput, struct{}]
@@ -49,7 +50,7 @@ func (g *GenkitService) loadPrompt(promptName string) (interface{}, error) {
 }
 
 // NewGenkitService creates a new Genkit service instance
-func NewGenkitService(apiKey string, mcpService *MCPService) *GenkitService {
+func NewGenkitService(apiKey string, mcpService *MCPService, workflowStorage storage.WorkflowStorage) *GenkitService {
 	ctx := context.Background()
 
 	// Initialize Genkit with Google GenAI plugin and prompt directory
@@ -64,15 +65,8 @@ func NewGenkitService(apiKey string, mcpService *MCPService) *GenkitService {
 		panic(fmt.Sprintf("Failed to initialize Genkit: %v", err))
 	}
 
-	// Initialize workflow storage service
-	// Use unified ARTIFACT_OUTPUT_DIR for all artifact storage
-	workflowsDir := os.Getenv("ARTIFACT_OUTPUT_DIR")
-	if workflowsDir == "" {
-	}
-	if workflowsDir == "" {
-		workflowsDir = "./generated_workflows"
-	}
-	workflowStorage := NewWorkflowStorageService(workflowsDir)
+	// Use the provided pluggable workflow storage
+	log.Printf("[GenkitService] Using workflow storage: %s", workflowStorage.GetStorageType())
 
 	service := &GenkitService{
 		ctx:             ctx,
@@ -555,13 +549,20 @@ func (g *GenkitService) convertSingleStepToCUE(stepData map[string]interface{}, 
 	// Extract step fields
 	stepID := g.extractStringField(stepData, "id", fmt.Sprintf("step_%d", index+1))
 	stepName := g.extractStringField(stepData, "name", fmt.Sprintf("Step %d", index+1))
+	service := g.extractStringField(stepData, "service", "")
 	action := g.extractStringField(stepData, "action", "unknown.action")
 	description := g.extractStringField(stepData, "description", "")
 
 	stepBuilder.WriteString("\t\t{\n")
 	stepBuilder.WriteString(fmt.Sprintf("\t\t\tid: %q\n", stepID))
 	stepBuilder.WriteString(fmt.Sprintf("\t\t\tname: %q\n", stepName))
-	stepBuilder.WriteString(fmt.Sprintf("\t\t\taction: %q\n", action))
+	
+	// Use the action as-is if it already contains service prefix, otherwise combine
+	if service != "" && !strings.Contains(action, ".") {
+		stepBuilder.WriteString(fmt.Sprintf("\t\t\taction: %q\n", service+"."+action))
+	} else {
+		stepBuilder.WriteString(fmt.Sprintf("\t\t\taction: %q\n", action))
+	}
 
 	if description != "" {
 		stepBuilder.WriteString(fmt.Sprintf("\t\t\tdescription: %q\n", description))

@@ -10,6 +10,8 @@ export interface AuthToken {
 
 export interface User {
   user_id: string
+  email: string
+  name: string
   oauth_tokens: {
     google: {
       access_token: string

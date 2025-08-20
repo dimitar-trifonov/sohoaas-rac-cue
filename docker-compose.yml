@@ -52,6 +52,28 @@ services:
       - MCP_AUTH_ENDPOINT=${SOHOAAS_MCP_AUTH_ENDPOINT:-/api/auth/token}
       - ARTIFACT_OUTPUT_DIR=${SOHOAAS_ARTIFACT_OUTPUT_DIR:-./generated_workflows}
       - RAC_CONTEXT_PATH=${SOHOAAS_RAC_CONTEXT_PATH:-./rac}
+      # Workflow Storage Configuration
+      - STORAGE_BACKEND=${SOHOAAS_STORAGE_BACKEND:-local}
+      - WORKFLOWS_DIR=${SOHOAAS_WORKFLOWS_DIR:-./generated_workflows}
+      # Google Cloud Storage (when STORAGE_BACKEND=gcs)
+      #- STORAGE_BACKEND=${SOHOAAS_STORAGE_BACKEND:-gcs}
+      - GCS_BUCKET_NAME=${SOHOAAS_GCS_BUCKET_NAME:-sohoaas-workflows}
+      - GCS_PROJECT_ID=${SOHOAAS_GCS_PROJECT_ID}
+      - GCS_SERVICE_ACCOUNT_KEY=${SOHOAAS_GCS_SERVICE_ACCOUNT_KEY}
+      - GCS_WORKFLOWS_PREFIX=${SOHOAAS_GCS_WORKFLOWS_PREFIX:-workflows/}
+      # Firebase Authentication Environment Variables
+      - FIREBASE_PROJECT_ID=${SOHOAAS_FIREBASE_PROJECT_ID}
+      - FIREBASE_PRIVATE_KEY_ID=${SOHOAAS_FIREBASE_PRIVATE_KEY_ID}
+      - FIREBASE_PRIVATE_KEY=${SOHOAAS_FIREBASE_PRIVATE_KEY}
+      - FIREBASE_CLIENT_EMAIL=${SOHOAAS_FIREBASE_CLIENT_EMAIL}
+      - FIREBASE_CLIENT_ID=${SOHOAAS_FIREBASE_CLIENT_ID}
+      - FIREBASE_AUTH_URI=${SOHOAAS_FIREBASE_AUTH_URI:-https://accounts.google.com/o/oauth2/auth}
+      - FIREBASE_TOKEN_URI=${SOHOAAS_FIREBASE_TOKEN_URI:-https://oauth2.googleapis.com/token}
+      - FIREBASE_AUTH_PROVIDER_X509_CERT_URL=${SOHOAAS_FIREBASE_AUTH_PROVIDER_X509_CERT_URL:-https://www.googleapis.com/oauth2/v1/certs}
+      - FIREBASE_CLIENT_X509_CERT_URL=${SOHOAAS_FIREBASE_CLIENT_X509_CERT_URL}
+      - FIREBASE_UNIVERSE_DOMAIN=${SOHOAAS_FIREBASE_UNIVERSE_DOMAIN:-googleapis.com}
+      # Email Access Control: Now handled via Firebase Console user management
+      # No environment variables needed
     volumes:
       # Persistent storage for workflows and user data
       - ./generated_workflows:/app/generated_workflows
@@ -83,6 +105,16 @@ services:
       - NGINX_PORT=${SOHOAAS_NGINX_PORT:-3000}
       - MCP_SERVICE_URL=${SOHOAAS_MCP_SERVICE_URL:-http://mcp-service:8080}
       - BACKEND_SERVICE_URL=${SOHOAAS_BACKEND_SERVICE_URL:-http://sohoaas-backend:8081}
+      # Frontend Firebase Configuration
+      - VITE_FIREBASE_API_KEY=${SOHOAAS_VITE_FIREBASE_API_KEY}
+      - VITE_FIREBASE_AUTH_DOMAIN=${SOHOAAS_VITE_FIREBASE_AUTH_DOMAIN:-sohoaas-dev.firebaseapp.com}
+      - VITE_FIREBASE_PROJECT_ID=${SOHOAAS_VITE_FIREBASE_PROJECT_ID:-sohoaas-dev}
+      - VITE_FIREBASE_STORAGE_BUCKET=${SOHOAAS_VITE_FIREBASE_STORAGE_BUCKET:-sohoaas-dev.appspot.com}
+      - VITE_FIREBASE_MESSAGING_SENDER_ID=${SOHOAAS_VITE_FIREBASE_MESSAGING_SENDER_ID}
+      - VITE_FIREBASE_APP_ID=${SOHOAAS_VITE_FIREBASE_APP_ID}
+      # Backend URL for secure token management
+      - VITE_BACKEND_URL=${SOHOAAS_VITE_BACKEND_URL:-http://sohoaas-backend:8081}
+      # Email Access Control: Now handled via Firebase Console user management
     depends_on:
       mcp-service:
         condition: service_healthy

@@ -1,5 +1,5 @@
 ---
-model: openai/gpt-4o-mini
+model: openai/gpt-4.1
 config:
   temperature: 0.1
   maxOutputTokens: 1500
@@ -203,16 +203,18 @@ This allows users to see extracted values but modify them in the UI if needed.
 - For Gmail: use "list_messages", "search_messages", "send_message" as shown
 - Copy function names EXACTLY as listed in available_services - do not modify them
 
-**CALENDAR API PARAMETER NAMES**:
-- For calendar.create_event, use "startTime" and "endTime" (camelCase), NOT "start_time" or "end_time"
-- Required parameters: "title", "startTime", "endTime"
-- Optional parameters: "description", "attendees"
-
-**GMAIL API PARAMETER ACCURACY**:
-- gmail.list_messages accepts: max_results (number), query (string)
-- NO "order" parameter - Gmail API doesn't support ordering by date in list_messages
-- To get oldest emails, use query parameter with date ranges (e.g., "before:2023/1/1")
-- Use max_results to limit number of results, not "limit"
+**SERVICE PARAMETER CONSISTENCY**
+Always use exact parameter names and casing as defined in available_services.
+Do not invent, pluralize, rename, or add unsupported parameters.
+Each service may have required and optional parameters — ensure all required parameters are included.
+Examples:
+1. Calendar (calendar.create_event):
+- Required → title, startTime, endTime (camelCase, not snake_case)
+- Optional → description, attendees
+2. Gmail (gmail.list_messages):
+- Supported → max_results (number), query (string)
+- Unsupported → No order parameter (date sorting must be handled with queries, e.g., before:2023/01/01)
+- Use max_results, not limit
 
 **STEP DEPENDENCY MANAGEMENT**:
 For each step, set the "depends_on" field to ensure proper execution order:

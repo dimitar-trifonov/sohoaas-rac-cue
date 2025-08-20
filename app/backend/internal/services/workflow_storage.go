@@ -173,7 +173,7 @@ func (w *WorkflowStorageService) SaveWorkflow(userID string, workflowName string
 		return nil, fmt.Errorf("failed to write metadata file: %w", err)
 	}
 
-	return &types.WorkflowFile{
+	workflowFile := &types.WorkflowFile{
 		ID:          fmt.Sprintf("%s_%s", userID, timestamp),
 		Name:        workflowName,
 		Description: fmt.Sprintf("Generated workflow: %s", workflowName),
@@ -184,7 +184,15 @@ func (w *WorkflowStorageService) SaveWorkflow(userID string, workflowName string
 		Content:     cueContent,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
-	}, nil
+	}
+
+	// Parse CUE content into structured data
+	if parsedWorkflow, err := w.parseCUEWorkflow(cueContent, workflowFile); err == nil {
+		workflowFile = parsedWorkflow
+	}
+	// Note: If parsing fails, we still return the file with raw content
+
+	return workflowFile, nil
 }
 
 // SaveWorkflowArtifact saves an artifact to the workflow's artifact directory

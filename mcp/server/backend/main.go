@@ -84,14 +84,16 @@ func main() {
 func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *oauth2.Config, gmailProxy *workspace.GmailProxy, docsProxy *workspace.DocsProxy, driveProxy *workspace.DriveProxy, calendarProxy *workspace.CalendarProxy, mcpServer *mcp.MCPServer) {
 	r := gin.Default()
 
-	// Store OAuth2 state and token
+	// Store OAuth2 state and token - COMMENTED OUT (using Firebase Auth instead)
 	var currentToken *oauth2.Token
-	oauthStates := make(map[string]bool)
+	// oauthStates := make(map[string]bool)
 	
-	// Get frontend URL for OAuth2 redirects
-	frontendURL := getEnvOrDefault("FRONTEND_URL", "http://localhost:3000")
+	// Get frontend URL for OAuth2 redirects - COMMENTED OUT (using Firebase Auth instead)
+	// frontendURL := getEnvOrDefault("FRONTEND_URL", "http://localhost:3000")
 
-	// OAuth2 authorization endpoint
+	// OAuth2 authorization endpoint - COMMENTED OUT (using Firebase Auth instead)
+	// Preserved for future use if needed
+	/*
 	r.GET("/api/auth/login", func(c *gin.Context) {
 		// Generate random state
 		state := generateRandomState()
@@ -106,8 +108,11 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 			"state":    state,
 		})
 	})
+	*/
 
-	// OAuth2 callback endpoint (matches Google Cloud Console config)
+	// OAuth2 callback endpoint - COMMENTED OUT (using Firebase Auth instead)
+	// Preserved for future use if needed
+	/*
 	r.GET("/api/v1/auth/google/callback", func(c *gin.Context) {
 		code := c.Query("code")
 		state := c.Query("state")
@@ -142,8 +147,11 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 		// Redirect back to frontend with success
 		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-success.html")
 	})
+	*/
 
-	// OAuth2 callback endpoint for frontend route (alternative path)
+	// OAuth2 callback endpoint for frontend route (alternative path) - COMMENTED OUT
+	// Preserved for future use if needed
+	/*
 	r.GET("/api/auth/callback", func(c *gin.Context) {
 		code := c.Query("code")
 		state := c.Query("state")
@@ -178,6 +186,7 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 		// Redirect back to frontend with success
 		c.Redirect(http.StatusTemporaryRedirect, frontendURL+"/oauth-success.html")
 	})
+	*/
 
 	// Get current token endpoint
 	r.GET("/api/auth/token", func(c *gin.Context) {
