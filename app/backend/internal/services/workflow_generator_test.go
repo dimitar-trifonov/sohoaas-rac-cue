@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-
+	"sohoaas-backend/internal/storage"
 )
 
 
@@ -707,24 +707,87 @@ func generateComplexInvestingWorkflow(userInput string, requiredServices []strin
 	executionSteps := []interface{}{
 		map[string]interface{}{
 			"id":         "fetch_gmail_messages",
-			"name":       "Fetch Gmail Messages",
+			"name":       "Fetch Investing Advice Emails",
 			"service":    "gmail",
 			"action":     "get_messages",
 			"parameters": map[string]interface{}{"from": "${user.sender_email}", "query": "investing advice"},
 		},
 		map[string]interface{}{
-			"id":         "create_drive_folder",
-			"name":       "Create Drive Folder",
+			"id":         "create_base_folder",
+			"name":       "Create Drive Folder for Organization",
 			"service":    "drive",
 			"action":     "drive.create_folder",
 			"parameters": map[string]interface{}{"name": "${user.folder_name}"},
 		},
+		// Note: Classification is handled by workflow execution engine using keyword matching
+		// No separate service call needed - this is built into the workflow logic
 		map[string]interface{}{
-			"id":         "classify_and_create_docs",
-			"name":       "Create and Classify Documents",
+			"id":         "create_topic_documents",
+			"name":       "Create Google Docs for Investment Topics",
+			"service":    "docs",
+			"action":     "docs.create_documents_batch",
+			"depends_on": []string{"create_base_folder", "fetch_gmail_messages"},
+			"parameters": map[string]interface{}{
+				"parent_folder": "${steps.create_base_folder.outputs.folder_id}",
+				"predefined_topics": []string{"stocks", "crypto", "bonds", "real_estate", "unclassified"},
+				"template": map[string]interface{}{
+					"title_prefix": "Investing Advice - ",
+					"header":       "# Automated Investing Advice Collection\n\n## Topic: {{TOPIC_NAME}}\n\nGenerated on: {{CURRENT_DATE}}\n\n---\n\n",
+				},
+			},
+			"outputs": map[string]interface{}{
+				"created_docs": "object",
+				"doc_urls":     "array",
+			},
+		},
+		map[string]interface{}{
+			"id":         "classify_and_append_messages",
+			"name":       "Classify Messages and Append to Topic Documents",
+			"service":    "docs",
+			"action":     "classify_and_append_batch",
+			"depends_on": []string{"create_topic_documents", "fetch_gmail_messages"},
+			"parameters": map[string]interface{}{
+				"messages": "${steps.fetch_gmail_messages.outputs.messages}",
+				"documents": "${steps.create_topic_documents.outputs.created_docs}",
+				"classification_keywords": map[string]interface{}{
+					"stocks":  []string{"stock", "equity", "shares", "dividend", "earnings"},
+					"crypto":  []string{"bitcoin", "ethereum", "cryptocurrency", "blockchain", "defi"},
+					"bonds":   []string{"bond", "treasury", "yield", "fixed income", "government"},
+					"real_estate": []string{"real estate", "property", "REIT", "housing market"},
+					"unclassified": []string{},
+				},
+				"format_template": map[string]interface{}{
+					"message_header": "## Message from {{SENDER}} - {{DATE}}\n\n",
+					"message_body":   "{{CONTENT}}\n\n---\n\n",
+				},
+			},
+			"outputs": map[string]interface{}{
+				"updated_docs": "object",
+				"total_messages_processed": "number",
+				"classification_summary": "object",
+			},
+		},
+		map[string]interface{}{
+			"id":         "create_summary_report",
+			"name":       "Create Workflow Execution Summary",
 			"service":    "docs",
 			"action":     "docs.create_document",
-			"parameters": map[string]interface{}{"title": "Classified Investing Advice", "parent_folder": "${steps.create_drive_folder.outputs.folder_id}"},
+			"depends_on": []string{"classify_and_append_messages"},
+			"parameters": map[string]interface{}{
+				"title": "Investing Advice Automation - Execution Report ${CURRENT_DATE}",
+				"parent_folder": "${steps.create_base_folder.outputs.folder_id}",
+				"content": map[string]interface{}{
+					"summary": "Execution completed successfully",
+					"messages_processed": "${steps.classify_and_append_messages.outputs.total_messages_processed}",
+					"classification_summary": "${steps.classify_and_append_messages.outputs.classification_summary}",
+					"documents_created": "${steps.create_topic_documents.outputs.doc_urls}",
+					"execution_time": "${WORKFLOW_START_TIME}",
+				},
+			},
+			"outputs": map[string]interface{}{
+				"report_doc_id": "string",
+				"report_url":    "string",
+			},
 		},
 	}
 
@@ -742,225 +805,6 @@ func generateComplexInvestingWorkflow(userInput string, requiredServices []strin
 			"drive": map[string]interface{}{"service": "drive"},
 		},
 	}
-}
-
-// generateComplexCUEWorkflow creates a sophisticated CUE workflow specification
-func generateComplexCUEWorkflow(name, description string, userParams []map[string]interface{}, executionSteps []map[string]interface{}) string {
-	return fmt.Sprintf(`package workflow
-
-#DeterministicWorkflow: {
-	name: string
-	description: string
-	trigger: {
-		type: "schedule" | "manual" | "event"
-		schedule?: string
-		event?: string
-		timezone?: string
-	}
-	steps: [...#WorkflowStep]
-	user_parameters: [...#UserParameter]
-	service_bindings: [...#ServiceBinding]
-	classification_rules: {...}
-}
-
-#WorkflowStep: {
-	id: string
-	name: string
-	service: string
-	action: string
-	inputs: {...}
-	outputs: {...}
-	depends_on?: [...string]
-	classification_logic?: {...}
-}
-
-#UserParameter: {
-	name: string
-	type: string
-	required: bool
-	description: string
-	default?: _
-}
-
-#ServiceBinding: {
-	service: string
-	oauth_scopes: [...string]
-}
-
-workflow: #DeterministicWorkflow & {
-	name: "%s"
-	description: "%s"
-	trigger: { 
-		type: "schedule"
-		schedule: "0 18 * * *"  // Daily at 18:00
-		timezone: "Europe/Sofia"
-	}
-	steps: [
-		{
-			id: "fetch_investing_emails"
-			name: "Fetch Investing Advice Emails"
-			service: "gmail"
-			action: "get_messages"
-			inputs: {
-				from: "${user.sender_email}"
-				query: "investing advice OR investment OR portfolio OR market analysis"
-				max_results: 50
-			}
-			outputs: {
-				messages: "array"
-				message_count: "number"
-			}
-		},
-		{
-			id: "create_base_folder"
-			name: "Create Drive Folder for Organization"
-			service: "drive"
-			action: "drive.create_folder"
-			inputs: {
-				name: "${user.folder_name}"
-				parent: "root"
-			}
-			outputs: {
-				folder_id: "string"
-				folder_url: "string"
-			}
-		},
-		// Note: Classification is handled by workflow execution engine using keyword matching
-		// No separate service call needed - this is built into the workflow logic
-		{
-			id: "create_topic_documents"
-			name: "Create Google Docs for Investment Topics"
-			service: "docs"
-			action: "docs.create_documents_batch"
-			depends_on: ["create_base_folder", "fetch_investing_emails"]
-			inputs: {
-				parent_folder: "${steps.create_base_folder.outputs.folder_id}"
-				predefined_topics: ["stocks", "crypto", "bonds", "real_estate", "unclassified"]
-				template: {
-					title_prefix: "Investing Advice - "
-					header: "# Automated Investing Advice Collection\n\n## Topic: {{TOPIC_NAME}}\n\nGenerated on: {{CURRENT_DATE}}\n\n---\n\n"
-				}
-			}
-			outputs: {
-				created_docs: "object"
-				doc_urls: "array"
-			}
-		},
-		{
-			id: "classify_and_append_messages"
-			name: "Classify Messages and Append to Topic Documents"
-			service: "docs"
-			action: "classify_and_append_batch"
-			depends_on: ["create_topic_documents", "fetch_investing_emails"]
-			inputs: {
-				messages: "${steps.fetch_investing_emails.outputs.messages}"
-				documents: "${steps.create_topic_documents.outputs.created_docs}"
-				classification_keywords: {
-					stocks: ["stock", "equity", "shares", "dividend", "earnings"]
-					crypto: ["bitcoin", "ethereum", "cryptocurrency", "blockchain", "defi"]
-					bonds: ["bond", "treasury", "yield", "fixed income", "government"]
-					real_estate: ["real estate", "property", "REIT", "housing market"]
-					unclassified: [] // Fallback for messages with no keyword matches
-				}
-				format_template: {
-					message_header: "## Message from {{SENDER}} - {{DATE}}\n\n"
-					message_body: "{{CONTENT}}\n\n---\n\n"
-				}
-			}
-			outputs: {
-				updated_docs: "object"
-				total_messages_processed: "number"
-				classification_summary: "object"
-			}
-		},
-		{
-			id: "create_summary_report"
-			name: "Create Workflow Execution Summary"
-			service: "docs"
-			action: "docs.create_document"
-			depends_on: ["classify_and_append_messages"]
-			inputs: {
-				title: "Investing Advice Automation - Execution Report ${CURRENT_DATE}"
-				parent_folder: "${steps.create_base_folder.outputs.folder_id}"
-				content: {
-					summary: "Execution completed successfully"
-					messages_processed: "${steps.classify_and_append_messages.outputs.total_messages_processed}"
-					classification_summary: "${steps.classify_and_append_messages.outputs.classification_summary}"
-					documents_created: "${steps.create_topic_documents.outputs.doc_urls}"
-					execution_time: "${WORKFLOW_START_TIME}"
-				}
-			}
-			outputs: {
-				report_doc_id: "string"
-				report_url: "string"
-			}
-		}
-	]
-	user_parameters: %s
-	service_bindings: [
-		{
-			service: "gmail"
-			oauth_scopes: [
-				"https://www.googleapis.com/auth/gmail.readonly",
-				"https://www.googleapis.com/auth/gmail.modify"
-			]
-		},
-		{
-			service: "docs"
-			oauth_scopes: [
-				"https://www.googleapis.com/auth/documents",
-				"https://www.googleapis.com/auth/documents.readonly"
-			]
-		},
-		{
-			service: "drive"
-			oauth_scopes: [
-				"https://www.googleapis.com/auth/drive.file",
-				"https://www.googleapis.com/auth/drive"
-			]
-		}
-	]
-	classification_rules: {
-		enabled: true
-		method: "keyword_based"
-		confidence_threshold: 0.7
-		fallback_topic: "general"
-		custom_keywords: "${user.classification_keywords}"
-	}
-}`, name, description, formatComplexUserParams(userParams))
-}
-
-// formatComplexUserParams converts complex user parameters to CUE format
-func formatComplexUserParams(params []map[string]interface{}) string {
-	if len(params) == 0 {
-		return "[]"
-	}
-
-	var cueParams []string
-	for _, param := range params {
-		defaultValue := ""
-		if def, exists := param["default"]; exists {
-			switch v := def.(type) {
-			case string:
-				defaultValue = fmt.Sprintf(`\n\t\t\tdefault: "%s"`, v)
-			case map[string]interface{}:
-				jsonBytes, _ := json.MarshalIndent(v, "\t\t\t", "  ")
-				defaultValue = fmt.Sprintf(`\n\t\t\tdefault: %s`, string(jsonBytes))
-			default:
-				defaultValue = fmt.Sprintf(`\n\t\t\tdefault: %v`, v)
-			}
-		}
-
-		cueParam := fmt.Sprintf(`{
-			name: "%s"
-			type: "%s"
-			required: %v
-			description: "%s"%s
-		}`, param["name"], param["type"], param["required"], param["description"], defaultValue)
-		cueParams = append(cueParams, cueParam)
-	}
-
-	return "[\n\t\t" + strings.Join(cueParams, ",\n\t\t") + "\n\t]"
 }
 
 // validateComplexWorkflowOutput validates the complex workflow generation output
@@ -1073,8 +917,14 @@ func initializeGenkitServiceForTest(t *testing.T) (*GenkitService, error) {
 	// Create MCP service for testing (required for service catalog access)
 	mcpService := NewMCPService("http://localhost:8080")
 
+	// Create a local workflow storage for tests using the testWorkflowsDir
+	wfStorage, err := storage.NewLocalStorage(storage.LocalStorageConfig{WorkflowsDir: testWorkflowsDir})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize local storage: %v", err)
+	}
+
 	// Initialize Genkit service with real LLM integration
-	genkitService := NewGenkitService(apiKey, mcpService)
+	genkitService := NewGenkitService(apiKey, mcpService, wfStorage)
 
 	// Register cleanup to kill any processes on the test port
 	t.Cleanup(func() {
