@@ -165,7 +165,7 @@ IntentGathererAgent: {
             description: "Extract email sending intent"
             input: {
                 user_message: "Send an email to john@acme.com about the proposal follow-up"
-                available_capabilities: ["send_email", "create_document"]
+                available_capabilities: ["send_message", "create_document"]
             }
             expected: {
                 intent_type: "email"

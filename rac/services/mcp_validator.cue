@@ -220,7 +220,7 @@ MCPValidatorService: {
             input: {
                 workflow_steps: [
                     {
-                        id: "send_email"
+                        id: "send_message"
                         name: "Send Email"
                         action: "gmail.send_message"
                         parameters: {
@@ -249,7 +249,7 @@ MCPValidatorService: {
                 is_valid: true
                 function_validation_results: [
                     {
-                        step_id: "send_email"
+                        step_id: "send_message"
                         action: "gmail.send_message"
                         function_exists: true
                         service_available: true
@@ -257,7 +257,7 @@ MCPValidatorService: {
                 ]
                 parameter_validation_results: [
                     {
-                        step_id: "send_email"
+                        step_id: "send_message"
                         required_params_present: true
                         param_types_valid: true
                         parameter_references_valid: true

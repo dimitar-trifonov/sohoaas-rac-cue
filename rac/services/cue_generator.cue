@@ -164,7 +164,7 @@ CueGeneratorService: {
                     trigger: { type: "manual" }
                     steps: [
                         {
-                            id: "send_email"
+                            id: "send_message"
                             name: "Send Test Email"
                             service: "gmail"
                             action: "send_message"
@@ -177,21 +177,21 @@ CueGeneratorService: {
                             depends_on: []
                         }
                     ]
-                    user_parameters: [
-                        {
+                    user_parameters: {
+                        recipient: {
                             name: "recipient"
                             type: "string"
                             required: true
                             description: "Email recipient"
                             prompt: "Enter recipient email:"
                         }
-                    ]
-                    service_bindings: [
-                        {
+                    }
+                    services: {
+                        gmail: {
                             service: "gmail"
                             oauth_scopes: ["https://www.googleapis.com/auth/gmail.send"]
                         }
-                    ]
+                    }
                 }
             }
             expected: {

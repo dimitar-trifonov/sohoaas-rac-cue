@@ -22,7 +22,7 @@ WorkflowGeneratorAgent: {
             owner: "generator"
             fields: [
                 { name: "user_id", type: "string", required: true },
-                { name: "user_input", type: "string", required: true }, // Original user intent
+                { name: "user_intent", type: "string", required: true }, // Original user intent
                 { name: "validated_intent", type: "object", required: true }, // From intent analyst
                 { name: "available_services", type: "string", required: true }, // MCP service catalog
                 { name: "input_validation_status", type: "string" }, // "valid", "invalid", "pending"
@@ -96,7 +96,7 @@ WorkflowGeneratorAgent: {
             description: "Intent analysis complete, ready for workflow generation"
             target: "generator"
             data_schema: {
-                user_input: "string"
+                user_intent: "string"
                 validated_intent: "object"
                 available_services: "string" // MCP service catalog with schemas
             }
@@ -218,10 +218,18 @@ WorkflowGeneratorAgent: {
                         description: "string"
                     }
                 }
-                service_bindings: [{
-                    service: "string"       // Service name (e.g., "gmail", "drive")
-                    oauth_scopes: ["string"] // Required OAuth2 scopes
-                }]
+                service_bindings: {
+                    _: {
+                        type: "mcp_service"
+                        auth: {
+                            method: "oauth2"
+                            oauth2: {
+                                scopes: ["string"]
+                                token_source: "user"
+                            }
+                        }
+                    }
+                }
             }
         }
     ]
@@ -308,7 +316,7 @@ WorkflowGeneratorAgent: {
             input_event: {
                 id: "intent_analysis_complete"
                 data: {
-                    user_input: "Fetch the oldest Gmail message from bojidar@investclub.bg, create a Google Doc from it in a Drive folder Email-Automation/Bojidar/{{YYYY‑MM‑DD}} if it does not exist yet."
+                    user_intent: "Fetch the oldest Gmail message from bojidar@investclub.bg, create a Google Doc from it in a Drive folder Email-Automation/Bojidar/{{YYYY‑MM‑DD}} if it does not exist yet."
                     validated_intent: {
                         is_automation_request: true
                         required_services: ["gmail", "docs", "drive"]
@@ -316,7 +324,7 @@ WorkflowGeneratorAgent: {
                         missing_info: []
                         next_action: "generate_workflow"
                     }
-                    available_services: "gmail: send_email, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
+                    available_services: "gmail: send_message, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
                 }
             }
             
@@ -324,20 +332,20 @@ WorkflowGeneratorAgent: {
             expected_states: {
                 generator_input_state: {
                     user_id: "test_user_123"
-                    user_input: "Fetch the oldest Gmail message from bojidar@investclub.bg, create a Google Doc from it in a Drive folder Email-Automation/Bojidar/{{YYYY‑MM‑DD}} if it does not exist yet."
+                    user_intent: "Fetch the oldest Gmail message from bojidar@investclub.bg, create a Google Doc from it in a Drive folder Email-Automation/Bojidar/{{YYYY‑MM‑DD}} if it does not exist yet."
                     validated_intent: {
                         is_automation_request: true
                         required_services: ["gmail", "docs", "drive"]
                         can_fulfill: true
                     }
-                    available_services: "gmail: send_email, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
+                    available_services: "gmail: send_message, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
                     input_validation_status: "valid"
                     rac_context: "loaded_rac_specification"
                 }
                 llm_input_state: {
                     formatted_prompt: "Generate workflow for: Fetch oldest Gmail message..."
                     user_intent: "Fetch the oldest Gmail message from bojidar@investclub.bg, create a Google Doc from it in a Drive folder Email-Automation/Bojidar/{{YYYY‑MM‑DD}} if it does not exist yet."
-                    service_schemas: "gmail: send_email, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
+                    service_schemas: "gmail: send_message, get_messages (OAuth: gmail.compose, gmail.readonly)\ndocs: create_document, get_document (OAuth: documents)\ndrive: upload_file, create_folder (OAuth: drive.file)"
                     model_config: {
                         temperature: 0.1
                         max_tokens: 2000
@@ -385,20 +393,38 @@ WorkflowGeneratorAgent: {
                                 required: true
                             }
                         }
-                        service_bindings: [
-                            {
-                                service: "gmail"
-                                oauth_scopes: ["https://www.googleapis.com/auth/gmail.readonly"]
-                            },
-                            {
-                                service: "docs"
-                                oauth_scopes: ["https://www.googleapis.com/auth/documents"]
-                            },
-                            {
-                                service: "drive"
-                                oauth_scopes: ["https://www.googleapis.com/auth/drive.file"]
+                        service_bindings: {
+                            gmail: {
+                                type: "mcp_service"
+                                auth: {
+                                    method: "oauth2"
+                                    oauth2: {
+                                        scopes: ["https://www.googleapis.com/auth/gmail.readonly"]
+                                        token_source: "user"
+                                    }
+                                }
                             }
-                        ]
+                            docs: {
+                                type: "mcp_service"
+                                auth: {
+                                    method: "oauth2"
+                                    oauth2: {
+                                        scopes: ["https://www.googleapis.com/auth/documents"]
+                                        token_source: "user"
+                                    }
+                                }
+                            }
+                            drive: {
+                                type: "mcp_service"
+                                auth: {
+                                    method: "oauth2"
+                                    oauth2: {
+                                        scopes: ["https://www.googleapis.com/auth/drive.file"]
+                                        token_source: "user"
+                                    }
+                                }
+                            }
+                        }
                     }
                     generation_status: "success"
                 }
@@ -493,7 +519,7 @@ WorkflowGeneratorAgent: {
             input_event: {
                 id: "intent_analysis_complete"
                 data: {
-                    user_input: "Send a weekly report email to my team"
+                    user_intent: "Send a weekly report email to my team"
                     validated_intent: {
                         is_automation_request: true
                         required_services: ["gmail"]
@@ -501,7 +527,7 @@ WorkflowGeneratorAgent: {
                         missing_info: []
                         next_action: "generate_workflow"
                     }
-                    available_services: "gmail: send_email, create_draft (OAuth: gmail.compose)"
+                    available_services: "gmail: send_message, create_draft (OAuth: gmail.compose)"
                 }
             }
             expected: {
@@ -547,20 +573,38 @@ WorkflowGeneratorAgent: {
                             placeholder: "Email-Automation/{{YYYY-MM-DD}}"
                         }
                     }
-                    service_bindings: [
-                        {
-                            service: "gmail"
-                            oauth_scopes: ["https://www.googleapis.com/auth/gmail.readonly"]
-                        },
-                        {
-                            service: "docs"
-                            oauth_scopes: ["https://www.googleapis.com/auth/documents"]
-                        },
-                        {
-                            service: "drive"
-                            oauth_scopes: ["https://www.googleapis.com/auth/drive.file"]
+                    service_bindings: {
+                        gmail: {
+                            type: "mcp_service"
+                            auth: {
+                                method: "oauth2"
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/gmail.readonly"]
+                                    token_source: "user"
+                                }
+                            }
                         }
-                    ]
+                        docs: {
+                            type: "mcp_service"
+                            auth: {
+                                method: "oauth2"
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/documents"]
+                                    token_source: "user"
+                                }
+                            }
+                        }
+                        drive: {
+                            type: "mcp_service"
+                            auth: {
+                                method: "oauth2"
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/drive.file"]
+                                    token_source: "user"
+                                }
+                            }
+                        }
+                    }
                 }
                 validation_results: {
                     schema_valid: true
@@ -582,7 +626,7 @@ WorkflowGeneratorAgent: {
             type: "unit"
             description: "Generate simple email sending workflow"
             input: {
-                user_input: "Send a weekly report email to my team"
+                user_intent: "Send a weekly report email to my team"
                 validated_intent: {
                     is_automation_request: true
                     required_services: ["gmail"]
@@ -623,12 +667,18 @@ WorkflowGeneratorAgent: {
                             required: true
                         }
                     }
-                    service_bindings: [
-                        {
-                            service: "gmail"
-                            oauth_scopes: ["https://www.googleapis.com/auth/gmail.compose"]
+                    service_bindings: {
+                        gmail: {
+                            type: "mcp_service"
+                            auth: {
+                                method: "oauth2"
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/gmail.compose"]
+                                    token_source: "user"
+                                }
+                            }
                         }
-                    ]
+                    }
                 }
                 execution_ready: true
                 status: "ready"

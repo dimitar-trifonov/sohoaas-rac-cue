@@ -222,7 +222,7 @@ WorkflowExecutorService: {
                     name: "Test Email Workflow"
                     steps: [
                         {
-                            id: "send_email"
+                            id: "send_message"
                             name: "Send Test Email"
                             service: "gmail"
                             action: "send_message"
@@ -244,12 +244,16 @@ WorkflowExecutorService: {
                             prompt: "Enter recipient email:"
                         }
                     ]
-                    service_bindings: [
-                        {
+                    service_bindings: {
+                        gmail: {
                             service: "gmail"
-                            oauth_scopes: ["https://www.googleapis.com/auth/gmail.send"]
+                            auth: {
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/gmail.send"]
+                                }
+                            }
                         }
-                    ]
+                    }
                 }
                 """
                 user_parameters: {
@@ -258,9 +262,9 @@ WorkflowExecutorService: {
             }
             expected: {
                 status: "completed"
-                completed_steps: ["send_email"]
+                completed_steps: ["send_message"]
                 step_outputs: {
-                    send_email: {
+                    send_message: {
                         message_id: "msg_12345"
                     }
                 }

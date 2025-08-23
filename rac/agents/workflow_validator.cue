@@ -156,7 +156,7 @@ WorkflowValidatorService: {
                     name: "Test Email Workflow"
                     steps: [
                         {
-                            id: "send_email"
+                            id: "send_message"
                             service: "gmail"
                             action: "send_message"
                             inputs: {
@@ -166,20 +166,24 @@ WorkflowValidatorService: {
                             outputs: { message_id: "sent_id" }
                         }
                     ]
-                    user_parameters: [
-                        {
-                            name: "recipient"
+                    user_parameters: {
+                        recipient: {
                             type: "string"
                             required: true
                             prompt: "Enter email:"
                         }
-                    ]
-                    service_bindings: [
-                        {
-                            service: "gmail"
-                            oauth_scopes: ["https://www.googleapis.com/auth/gmail.send"]
+                    }
+                    service_bindings: {
+                        gmail: {
+                            auth: {
+                                method: "oauth2"
+                                oauth2: {
+                                    scopes: ["https://www.googleapis.com/auth/gmail.send"]
+                                    token_source: "user"
+                                }
+                            }
                         }
-                    ]
+                    }
                 }
                 """
             }

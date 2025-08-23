@@ -413,7 +413,7 @@ WorkflowGenerationTests: [
             }
             expected: {
                 workflow_steps: [{
-                    step_id: "send_email"
+                    step_id: "send_message"
                     action: "gmail.send_message"
                     capability_status: "capable"
                     parameters: {
@@ -466,7 +466,7 @@ WorkflowGenerationTests: [
             description: "Extract parameters from MCP service schemas"
             input: {
                 workflow_steps: [{
-                    step_id: "send_email"
+                    step_id: "send_message"
                     action: "gmail.send_message"
                     capability_status: "capable"
                 }]
@@ -483,7 +483,7 @@ WorkflowGenerationTests: [
             }
             expected: {
                 workflow_steps: [{
-                    step_id: "send_email"
+                    step_id: "send_message"
                     action: "gmail.send_message"
                     capability_status: "capable"
                     parameters: {
@@ -513,7 +513,7 @@ WorkflowGenerationTests: [
                     user_message: "Send an email to john@example.com about the meeting"
                 }
                 workflow_steps: [{
-                    step_id: "send_email"
+                    step_id: "send_message"
                     action: "gmail.send_message"
                     capability_status: "capable"
                     parameters: {
@@ -528,7 +528,7 @@ WorkflowGenerationTests: [
                     name: "Send Email Workflow"
                     description: "Send an email message to specified recipient"
                     steps: [{
-                        id: "send_email"
+                        id: "send_message"
                         action: "gmail.send_message"
                         parameters: {
                             to: "${user.to}"
@@ -584,7 +584,7 @@ WorkflowGenerationTests: [
                     description: "Send an email and create a confirmation document with response details"
                     steps: [
                         {
-                            id: "send_email"
+                            id: "send_message"
                             action: "gmail.send_message"
                             parameters: {
                                 to: "${user.recipient_email}"
@@ -596,10 +596,10 @@ WorkflowGenerationTests: [
                             id: "create_doc"
                             action: "docs.create_document"
                             parameters: {
-                                title: "Email Confirmation: ${steps.send_email.outputs.subject}"
-                                content: "Email sent to ${steps.send_email.outputs.to} with message ID: ${steps.send_email.outputs.message_id}"
+                                title: "Email Confirmation: ${steps.send_message.outputs.subject}"
+                                content: "Email sent to ${steps.send_message.outputs.to} with message ID: ${steps.send_message.outputs.message_id}"
                             }
-                            depends_on: ["send_email"]
+                            depends_on: ["send_message"]
                         }
                     ]
                     user_parameters: {

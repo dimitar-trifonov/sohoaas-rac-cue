@@ -147,7 +147,7 @@ IntentAnalystAgent: {
                 workflow_type: "email_followup"
                 action_sequence: [
                     {
-                        action: "send_email"
+                        action: "send_message"
                         parameters: {
                             to: "john@acme.com"
                             subject: "Follow-up on proposal"

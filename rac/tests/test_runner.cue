@@ -18,7 +18,7 @@ TestRunner: {
                 providers: [
                     {name: "google_drive", status: "available", actions: ["create_folder", "upload_file"]},
                     {name: "google_docs", status: "available", actions: ["create_document", "update_content"]},
-                    {name: "gmail", status: "available", actions: ["send_email", "search_emails"]},
+                    {name: "gmail", status: "available", actions: ["send_message", "search_emails"]},
                     {name: "google_calendar", status: "available", actions: ["create_event", "list_events"]},
                     {name: "slack", status: "available", actions: ["send_message", "create_channel"]}
                 ]

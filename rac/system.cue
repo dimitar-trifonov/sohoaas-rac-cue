@@ -648,7 +648,7 @@ SOHOAASSystem: RacSystem & {
                     personal_capabilities: {
                         user_id: "john@example.com"
                         mcp_servers: ["gmail", "docs", "calendar"]
-                        available_actions: ["send_email", "create_document", "schedule_meeting"]
+                        available_actions: ["send_message", "create_document", "schedule_meeting"]
                         examples: [
                             "Follow up on the proposal I sent to ACME Corp last week",
                             "Prepare for my client meeting with Sarah tomorrow - create agenda and send invite", 
@@ -669,7 +669,7 @@ SOHOAASSystem: RacSystem & {
                 }
                 expected: {
                     simple_intent: {
-                        detected_action: "send_email"
+                        detected_action: "send_message"
                         confidence: "high"
                     }
                 }
