@@ -51,15 +51,22 @@ type StorageFactory struct{}
 
 // NewStorage creates a storage backend based on the provided configuration
 func (f *StorageFactory) NewStorage(config StorageConfig) (WorkflowStorage, error) {
-	switch config.Backend {
-	case "local":
-		return NewLocalStorage(config.LocalConfig)
-	case "gcs":
-		return NewGCSStorage(config.GCSConfig)
-	default:
-		// Default to local storage for backward compatibility
-		return NewLocalStorage(LocalStorageConfig{
-			WorkflowsDir: "./generated_workflows",
-		})
-	}
+    var backend WorkflowStorage
+    var err error
+    switch config.Backend {
+    case "local":
+        backend, err = NewLocalStorage(config.LocalConfig)
+    case "gcs":
+        backend, err = NewGCSStorage(config.GCSConfig)
+    default:
+        // Default to local storage for backward compatibility
+        backend, err = NewLocalStorage(LocalStorageConfig{
+            WorkflowsDir: "./generated_workflows",
+        })
+    }
+    if err != nil {
+        return nil, err
+    }
+    // Wrap with ParsingStorage to ensure ParsedData is populated uniformly
+    return NewParsingStorage(backend), nil
 }

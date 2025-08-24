@@ -3,6 +3,8 @@ package services
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,6 +19,49 @@ type ExecutionEngine struct {
 	mcpService     *MCPService
 	mcpParser      *MCPCatalogParser
 	serviceCatalog types.ServiceCatalog
+}
+
+// inlineDeterministicSchema attempts to prepend the deterministic workflow schema
+// to the provided CUE content so references like #DeterministicWorkflow resolve.
+func (ee *ExecutionEngine) inlineDeterministicSchema(cueContent string) string {
+    // Try to load schema content
+    schemaContent := ee.loadDeterministicSchema()
+    if schemaContent == "" {
+        // Nothing to inline; return original content
+        return cueContent
+    }
+
+    // Remove package declarations from both to avoid conflicts
+    cleanedSchema := ee.removePackageDeclaration(schemaContent)
+    cleanedContent := ee.removePackageDeclaration(cueContent)
+
+    // Concatenate schema then content
+    return cleanedSchema + "\n\n" + cleanedContent
+}
+
+// loadDeterministicSchema loads rac/schemas/deterministic_workflow.cue using RAC_CONTEXT_PATH
+// if available, with sensible fallbacks relative to current working directory.
+func (ee *ExecutionEngine) loadDeterministicSchema() string {
+    // Preferred: RAC_CONTEXT_PATH env var points to repo root containing rac/
+    if root := os.Getenv("RAC_CONTEXT_PATH"); root != "" {
+        if content := ee.readFileIfExists(filepath.Join(root, "rac", "schemas", "deterministic_workflow.cue")); content != "" {
+            return content
+        }
+    }
+
+    // Fallbacks: common relative paths when running backend from app/backend/
+    candidates := []string{
+        filepath.Join("..", "..", "..", "rac", "schemas", "deterministic_workflow.cue"), // from app/backend/internal/services/
+        filepath.Join("..", "..", "rac", "schemas", "deterministic_workflow.cue"),        // from app/backend/internal/
+        filepath.Join("rac", "schemas", "deterministic_workflow.cue"),                        // from repo root
+    }
+    for _, p := range candidates {
+        if content := ee.readFileIfExists(p); content != "" {
+            return content
+        }
+    }
+    log.Printf("[ExecutionEngine] Warning: deterministic_workflow.cue not found; proceeding without inlined schema")
+    return ""
 }
 
 // NewExecutionEngine creates a new execution engine
@@ -433,7 +478,7 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 		
 		if stepOutputs, exists := context.StepOutputs[stepID]; exists {
 			if outputMap, ok := stepOutputs.(map[string]interface{}); ok {
-				if fieldValue, fieldExists := outputMap[outputField]; fieldExists {
+				if fieldValue, exists := outputMap[outputField]; exists {
 					return fieldValue, nil
 				}
 			}
@@ -489,7 +534,6 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 		
 		return result, nil
 	}
-
 
 	// Handle step output references: ${steps.step_id.outputs.field}
 	stepOutputRegex := regexp.MustCompile(`\$\{steps\.([^.]+)\.outputs\.([^}]+)\}`)
@@ -576,9 +620,18 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 	}
 
 
-
 	// No parameter substitution needed, return as-is
 	return value, nil
+}
+
+// readFileIfExists reads a file path if it exists and returns its contents as string.
+// Returns empty string if the file cannot be read.
+func (ee *ExecutionEngine) readFileIfExists(path string) string {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        return ""
+    }
+    return string(data)
 }
 
 // isDateTimeValue checks if a string value looks like a datetime
@@ -623,12 +676,15 @@ type ParsedWorkflow struct {
 func (ee *ExecutionEngine) ParseCUEWorkflow(cueContent string) (*ParsedWorkflow, error) {
 	// Sanitize CUE content to remove illegal characters
 	sanitizedContent := ee.sanitizeCUEContent(cueContent)
-	
+
+	// Ensure deterministic workflow schema is available by inlining it
+	combinedContent := ee.inlineDeterministicSchema(sanitizedContent)
+
 	// Create CUE context
 	ctx := cuecontext.New()
-	
-	// Parse the CUE content (schema is already embedded in saved files)
-	value := ctx.CompileString(sanitizedContent)
+
+	// Parse the CUE content with schema inlined
+	value := ctx.CompileString(combinedContent)
 	if err := value.Err(); err != nil {
 		return nil, fmt.Errorf("failed to compile CUE content: %w", err)
 	}

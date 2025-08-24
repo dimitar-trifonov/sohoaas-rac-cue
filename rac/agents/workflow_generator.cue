@@ -47,6 +47,7 @@ WorkflowGeneratorAgent: {
                 { name: "output_validation_status", type: "string" }, // "valid", "invalid", "pending"
                 { name: "execution_ready", type: "boolean" }, // Ready for workflow execution
                 { name: "artifacts_saved", type: "boolean" }, // Files saved to disk
+                { name: "artifacts_location", type: "string" }, // Storage backend: "local" | "gcs"
                 { name: "status", type: "string" } // "generated", "validated", "ready", "error"
             ]
             metadata: {
@@ -495,6 +496,7 @@ WorkflowGeneratorAgent: {
                         path: "/workflows/test_user_123/gmail_to_document_workflow.cue"
                         saved_at: "2025-08-13T18:47:00Z"
                     }
+                    artifacts_location: "local"
                     cue_conversion_status: "success"
                     execution_ready: true
                     artifacts_saved: true
