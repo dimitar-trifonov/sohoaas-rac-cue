@@ -1,12 +1,12 @@
 package services
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"sohoaas-backend/internal/types"
@@ -148,10 +148,30 @@ func (m *MCPService) ExecuteAction(service, action string, parameters map[string
 	}
 	
 	log.Printf("[MCPService] Request body length: %d bytes", len(requestBody))
-	log.Printf("[MCPService] Request JSON: %s", string(requestBody))
+	// Redact token value in logged JSON
+	redactedArgs := make(map[string]interface{}, len(arguments))
+	for k, v := range arguments {
+		if k == "token" {
+			redactedArgs[k] = "[REDACTED]"
+		} else {
+			redactedArgs[k] = v
+		}
+	}
+	redactedReq := struct {
+		Name      string                 `json:"name"`
+		Arguments map[string]interface{} `json:"arguments"`
+	}{
+		Name:      toolName,
+		Arguments: redactedArgs,
+	}
+	if redactedJSON, err := json.Marshal(redactedReq); err == nil {
+		log.Printf("[MCPService] Request JSON (redacted): %s", string(redactedJSON))
+	} else {
+		log.Printf("[MCPService] Request JSON (redacted) marshal error: %v", err)
+	}
 	
 	// Create HTTP request
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(requestBody)))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(requestBody))
 	if err != nil {
 		log.Printf("[MCPService] ERROR: Failed to create HTTP request: %v", err)
 		return nil, fmt.Errorf("failed to create MCP execute request: %w", err)
@@ -179,7 +199,13 @@ func (m *MCPService) ExecuteAction(service, action string, parameters map[string
 	}
 	
 	log.Printf("[MCPService] Response body length: %d bytes", len(responseBody))
-	log.Printf("[MCPService] Response body: %s", string(responseBody))
+	// Truncate very long responses in logs to keep them readable
+	const maxLogBody = 2000
+	if len(responseBody) > maxLogBody {
+		log.Printf("[MCPService] Response body (truncated): %s... [truncated %d bytes]", string(responseBody[:maxLogBody]), len(responseBody)-maxLogBody)
+	} else {
+		log.Printf("[MCPService] Response body: %s", string(responseBody))
+	}
 	
 	// Parse response from /api/mcp/tools/call
 	var toolResponse struct {

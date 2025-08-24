@@ -329,85 +329,132 @@ func startHTTPServer(engine *workflow.MultiProviderWorkflowEngine, oauthConfig *
 	// MCP REST API endpoints (for Genkit MCP plugin compatibility)
 	// GET for listing operations (follows REST conventions)
 	r.GET("/api/mcp/tools", func(c *gin.Context) {
-		// Use the same service discovery as REST API
+		// Use the same service discovery as REST API, but synthesize input schemas from ExamplePayload
 		var tools []map[string]interface{}
-		
-		// Get Gmail service metadata and convert to MCP tools
+
+		// Minimal per-function OAuth scopes for PoC
+		scopesMap := map[string][]string{
+			"gmail.send_message":    {"https://www.googleapis.com/auth/gmail.send"},
+			"docs.create_document":   {"https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive.file"},
+			"drive.share_file":       {"https://www.googleapis.com/auth/drive"},
+			"calendar.create_event":  {"https://www.googleapis.com/auth/calendar.events"},
+		}
+
+		// Helpers to infer JSON Schema from example payloads (recursive literal requires var then assign)
+		var inferSchema func(v interface{}) map[string]interface{}
+		inferSchema = func(v interface{}) map[string]interface{} {
+			switch val := v.(type) {
+			case string:
+				return map[string]interface{}{"type": "string"}
+			case float64, float32, int, int32, int64:
+				return map[string]interface{}{"type": "number"}
+			case bool:
+				return map[string]interface{}{"type": "boolean"}
+			case []interface{}:
+				// Infer items type from first element when available
+				itemsSchema := map[string]interface{}{"type": "string"}
+				if len(val) > 0 {
+					itemsSchema = inferSchema(val[0])
+				}
+				return map[string]interface{}{"type": "array", "items": itemsSchema}
+			case map[string]interface{}:
+				props := map[string]interface{}{}
+				for k, vv := range val {
+					props[k] = inferSchema(vv)
+				}
+				return map[string]interface{}{"type": "object", "properties": props}
+			default:
+				return map[string]interface{}{"type": "string"}
+			}
+		}
+
+		buildTool := func(service string, functionName string, functionInfo interface{}) map[string]interface{} {
+			fi := functionInfo.(map[string]interface{})
+			// Base properties with token
+			properties := map[string]interface{}{
+				"token": map[string]interface{}{
+					"type":        "string",
+					"description": "OAuth2 access token",
+				},
+			}
+			// Merge inferred properties from example_payload when present
+			if ep, ok := fi["example_payload"].(map[string]interface{}); ok {
+				for k, v := range ep {
+					properties[k] = inferSchema(v)
+				}
+			}
+			// Required fields
+			required := []string{"token"}
+			if rf, ok := fi["required_fields"].([]string); ok {
+				required = append(required, rf...)
+			} else if rfAny, ok := fi["required_fields"].([]interface{}); ok {
+				for _, r := range rfAny {
+					if s, ok := r.(string); ok {
+						required = append(required, s)
+					}
+				}
+			}
+			fqName := fmt.Sprintf("%s.%s", service, functionName)
+			tool := map[string]interface{}{
+				"name":        fqName,
+				"description": fi["description"],
+				"inputSchema": map[string]interface{}{
+					"type":       "object",
+					"properties": properties,
+					"required":   required,
+				},
+			}
+			if scopes, ok := scopesMap[fqName]; ok {
+				tool["scopes"] = scopes
+			}
+			return tool
+		}
+
+		// Gmail
 		gmailMetadata := gmailProxy.GetServiceMetadata()
 		for functionName, functionInfo := range gmailMetadata.Functions {
-			tools = append(tools, map[string]interface{}{
-				"name": fmt.Sprintf("gmail.%s", functionName),
-				"description": functionInfo.Description,
-				"inputSchema": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"token": map[string]interface{}{
-							"type": "string",
-							"description": "OAuth2 access token",
-						},
-					},
-					"required": append([]string{"token"}, functionInfo.RequiredFields...),
-				},
-			})
+			// FunctionMetadata is a struct; convert to map for generic handling above
+			fi := map[string]interface{}{
+				"description":     functionInfo.Description,
+				"example_payload": functionInfo.ExamplePayload,
+				"required_fields": functionInfo.RequiredFields,
+			}
+			tools = append(tools, buildTool("gmail", functionName, fi))
 		}
-		
-		// Get Docs service metadata and convert to MCP tools
+
+		// Docs
 		docsMetadata := docsProxy.GetServiceMetadata()
 		for functionName, functionInfo := range docsMetadata.Functions {
-			tools = append(tools, map[string]interface{}{
-				"name": fmt.Sprintf("docs.%s", functionName),
-				"description": functionInfo.Description,
-				"inputSchema": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"token": map[string]interface{}{
-							"type": "string",
-							"description": "OAuth2 access token",
-						},
-					},
-					"required": append([]string{"token"}, functionInfo.RequiredFields...),
-				},
-			})
+			fi := map[string]interface{}{
+				"description":     functionInfo.Description,
+				"example_payload": functionInfo.ExamplePayload,
+				"required_fields": functionInfo.RequiredFields,
+			}
+			tools = append(tools, buildTool("docs", functionName, fi))
 		}
-		
-		// Get Drive service metadata and convert to MCP tools
+
+		// Drive
 		driveMetadata := driveProxy.GetServiceMetadata()
 		for functionName, functionInfo := range driveMetadata.Functions {
-			tools = append(tools, map[string]interface{}{
-				"name": fmt.Sprintf("drive.%s", functionName),
-				"description": functionInfo.Description,
-				"inputSchema": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"token": map[string]interface{}{
-							"type": "string",
-							"description": "OAuth2 access token",
-						},
-					},
-					"required": append([]string{"token"}, functionInfo.RequiredFields...),
-				},
-			})
+			fi := map[string]interface{}{
+				"description":     functionInfo.Description,
+				"example_payload": functionInfo.ExamplePayload,
+				"required_fields": functionInfo.RequiredFields,
+			}
+			tools = append(tools, buildTool("drive", functionName, fi))
 		}
-		
-		// Get Calendar service metadata and convert to MCP tools
+
+		// Calendar
 		calendarMetadata := calendarProxy.GetServiceMetadata()
 		for functionName, functionInfo := range calendarMetadata.Functions {
-			tools = append(tools, map[string]interface{}{
-				"name": fmt.Sprintf("calendar.%s", functionName),
-				"description": functionInfo.Description,
-				"inputSchema": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"token": map[string]interface{}{
-							"type": "string",
-							"description": "OAuth2 access token",
-						},
-					},
-					"required": append([]string{"token"}, functionInfo.RequiredFields...),
-				},
-			})
+			fi := map[string]interface{}{
+				"description":     functionInfo.Description,
+				"example_payload": functionInfo.ExamplePayload,
+				"required_fields": functionInfo.RequiredFields,
+			}
+			tools = append(tools, buildTool("calendar", functionName, fi))
 		}
-		
+
 		c.JSON(http.StatusOK, gin.H{
 			"tools": tools,
 		})
