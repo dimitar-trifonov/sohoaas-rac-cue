@@ -5,7 +5,7 @@ import { Header, Navigation, Container } from './components/layout'
 import { Button, Card } from './components/ui'
 import { UnauthorizedModal } from './components/UnauthorizedModal'
 import { cn, typographyVariants } from './design-system'
-import { sohoaasApi } from './services/api'
+
 
 function App() {
   // External state management - outside React rendering cycle
@@ -49,37 +49,14 @@ function App() {
       const userParameters = workflow.executionParameters || {}
       console.log('User parameters for execution:', userParameters)
       
-      // Get user's timezone for backend processing
-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      
-      // Get Firebase ID token for backend authentication
-      const authToken = await sohoaasApi.getAuthToken()
-      if (!authToken?.access_token) {
-        throw new Error('No authentication token available')
+      // Execute via workflow store/API (handles proxy and auth)
+      const result = await useWorkflowStore.getState().executeWorkflow(
+        workflow.id || workflow.ID,
+        userParameters
+      )
+      if (!result) {
+        throw new Error('Execution failed')
       }
-
-      // Google access token is now managed securely by the backend
-      // No need to retrieve it in frontend
-
-      // Call backend execution API
-      const response = await fetch('http://localhost:8081/api/v1/workflow/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken.access_token}`,
-        },
-        body: JSON.stringify({
-          workflow_id: workflow.id || workflow.ID,
-          user_parameters: userParameters,
-          user_timezone: userTimezone
-        })
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Execution failed: ${response.statusText}`)
-      }
-      
-      const result = await response.json()
       console.log('Workflow execution result:', result)
       
       // Refresh workflows to show updated status

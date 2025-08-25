@@ -10,6 +10,7 @@ mcp/server/backend/mcp-server
 .env
 mcp/server/.env
 app/backend/.env
+app/frontend/.env.production
 service-account-key.json
 
 # node_modules, dist

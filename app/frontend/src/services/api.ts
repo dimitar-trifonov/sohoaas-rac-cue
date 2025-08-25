@@ -13,8 +13,9 @@ import type {
 } from '../types'
 
 class SOHOAASApiService {
-  // Use environment variables for Docker deployment, fallback to localhost for development
-  private readonly PROXY_BASE_URL = import.meta.env.VITE_PROXY_URL || 'http://localhost:3000'
+  // Use environment variables; default proxy to same-origin to work in Cloud Run without compile-time VITE vars
+  private readonly PROXY_BASE_URL =
+    import.meta.env.VITE_PROXY_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
   private readonly BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081'
   
   // Authentication & Token Management
@@ -349,18 +350,40 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflow/execute`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          workflow_id: workflowId,
-          parameters: parameters || {},
-          user_id: `frontend_user_${Date.now()}`
-        })
-      })
+          // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflow/execute`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflow/execute`
+      ]
+
+      let response: Response | null = null
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              workflow_id: workflowId,
+              user_parameters: parameters || {},
+              user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+            })
+          })
+          if (res.ok) {
+            response = res
+            break
+          }
+        } catch (error) {
+          console.warn(`Failed to execute workflow via ${url}:`, error)
+          continue
+        }
+      }
+
+      if (!response) {
+        throw new Error('All execute workflow endpoints failed')
+      }
 
       if (!response.ok) {
         throw new Error(`Workflow execution failed: ${response.status}`)

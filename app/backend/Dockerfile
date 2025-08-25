@@ -9,7 +9,7 @@ RUN apk add --no-cache git ca-certificates tzdata
 WORKDIR /app
 
 # Copy genkit directory
-COPY ./app/backend/genkit ./genkit
+COPY ./app/backend/genkit/go ./genkit/go
 
 # Copy go mod files from backend directory
 COPY ./app/backend/go.mod ./app/backend/go.sum ./
