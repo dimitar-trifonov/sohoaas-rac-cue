@@ -156,19 +156,29 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/agents`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [`${this.PROXY_BASE_URL}/api/v1/agents`, `${this.BACKEND_BASE_URL}/api/v1/agents`]
 
-      if (!response.ok) {
-        throw new Error(`Agents request failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            return data.agents || []
+          }
+        } catch (error) {
+          console.warn(`Failed to get agents from ${url}:`, error)
+          continue
+        }
       }
 
-      const data = await response.json()
-      return data.agents || []
+      throw new Error('All agents endpoints failed')
     } catch (error) {
       console.error('Failed to get agents:', error)
       return []
@@ -231,57 +241,86 @@ class SOHOAASApiService {
       let validatedIntent = intentAnalysis
       if (!validatedIntent) {
         console.log('[API] Step 1: Analyzing user intent...')
-        const intentResponse = await fetch(`${this.BACKEND_BASE_URL}/api/v1/intent/analyze`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            workflow_intent: {
-              user_message: userMessage,
-              workflow_pattern: '',
-              trigger_conditions: {},
-              action_sequence: [],
-              data_requirements: [],
-              user_parameters: []
-            }
-          })
-        })
+        const analyzeUrls = [
+          `${this.PROXY_BASE_URL}/api/v1/intent/analyze`,
+          `${this.BACKEND_BASE_URL}/api/v1/intent/analyze`
+        ]
 
-        if (!intentResponse.ok) {
-          throw new Error(`Intent analysis failed: ${intentResponse.status}`)
+        let intentResult: any | null = null
+        for (const url of analyzeUrls) {
+          try {
+            const intentResponse = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                workflow_intent: {
+                  user_message: userMessage,
+                  workflow_pattern: '',
+                  trigger_conditions: {},
+                  action_sequence: [],
+                  data_requirements: [],
+                  user_parameters: []
+                }
+              })
+            })
+            if (intentResponse.ok) {
+              intentResult = await intentResponse.json()
+              break
+            }
+          } catch (error) {
+            console.warn(`Failed to analyze intent via ${url}:`, error)
+            continue
+          }
         }
 
-        const intentResult = await intentResponse.json()
+        if (!intentResult) {
+          throw new Error('All intent analysis endpoints failed')
+        }
+
         console.log('[API] Intent analysis result:', intentResult)
-        
         if (!intentResult.agent_response?.output) {
           throw new Error('Invalid intent analysis response')
         }
-        
         validatedIntent = intentResult.agent_response.output
       }
 
       // Step 2: Workflow Generation using validated intent and original user input
       console.log('[API] Step 2: Generating workflow with validated intent and user input...')
-      const workflowResponse = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflow/generate`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_intent: userMessage,
-          validated_intent: validatedIntent
-        })
-      })
+      const genUrls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflow/generate`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflow/generate`
+      ]
 
-      if (!workflowResponse.ok) {
-        throw new Error(`Workflow generation failed: ${workflowResponse.status}`)
+      let result: any | null = null
+      for (const url of genUrls) {
+        try {
+          const workflowResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              user_intent: userMessage,
+              validated_intent: validatedIntent
+            })
+          })
+          if (workflowResponse.ok) {
+            result = await workflowResponse.json()
+            break
+          }
+        } catch (error) {
+          console.warn(`Failed to generate workflow via ${url}:`, error)
+          continue
+        }
       }
 
-      const result = await workflowResponse.json()
+      if (!result) {
+        throw new Error('All workflow generation endpoints failed')
+      }
       console.log('[API] Workflow generation completed:', result)
       return result
 
@@ -299,19 +338,29 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflows`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [`${this.PROXY_BASE_URL}/api/v1/workflows`, `${this.BACKEND_BASE_URL}/api/v1/workflows`]
 
-      if (!response.ok) {
-        throw new Error(`Get workflows failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            return data.workflows || []
+          }
+        } catch (error) {
+          console.warn(`Failed to get workflows from ${url}:`, error)
+          continue
+        }
       }
 
-      const data = await response.json()
-      return data.workflows || []
+      throw new Error('All get workflows endpoints failed')
     } catch (error) {
       console.error('Failed to get workflows:', error)
       return []
@@ -325,18 +374,31 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflows/${workflowId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflows/${workflowId}`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflows/${workflowId}`
+      ]
 
-      if (!response.ok) {
-        throw new Error(`Get workflow failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+
+          if (response.ok) {
+            return await response.json()
+          }
+        } catch (error) {
+          console.warn(`Failed to get workflow from ${url}:`, error)
+          continue
+        }
       }
 
-      return await response.json()
+      throw new Error('All get workflow endpoints failed')
     } catch (error) {
       console.error('Failed to get workflow:', error)
       return null
@@ -404,23 +466,35 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflow/discover`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_message: userMessage,
-          user_id: `frontend_user_${Date.now()}`
-        })
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflow/discover`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflow/discover`
+      ]
 
-      if (!response.ok) {
-        throw new Error(`Workflow discovery failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              user_message: userMessage,
+              user_id: `frontend_user_${Date.now()}`
+            })
+          })
+          if (response.ok) {
+            return await response.json()
+          }
+        } catch (error) {
+          console.warn(`Failed to start workflow discovery via ${url}:`, error)
+          continue
+        }
       }
 
-      return await response.json()
+      throw new Error('All workflow discovery endpoints failed')
     } catch (error) {
       console.error('Failed to start workflow discovery:', error)
       return null
@@ -438,23 +512,35 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/workflow/continue`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          user_response: userResponse
-        })
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflow/continue`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflow/continue`
+      ]
 
-      if (!response.ok) {
-        throw new Error(`Continue workflow discovery failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              session_id: sessionId,
+              user_response: userResponse
+            })
+          })
+          if (response.ok) {
+            return await response.json()
+          }
+        } catch (error) {
+          console.warn(`Failed to continue workflow discovery via ${url}:`, error)
+          continue
+        }
       }
 
-      return await response.json()
+      throw new Error('All continue workflow endpoints failed')
     } catch (error) {
       console.error('Failed to continue workflow discovery:', error)
       return null
@@ -469,34 +555,46 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/test/pipeline`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user_id: `frontend_user_${Date.now()}`,
-          user_message: userMessage,
-          conversation_history: [],
-          user: {
-            user_id: `frontend_user_${Date.now()}`,
-            oauth_tokens: {
-              google: {
-                access_token: token,
-                token_type: 'Bearer'
-              }
-            },
-            connected_services: ['gmail', 'calendar', 'docs', 'drive']
-          }
-        })
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/test/pipeline`,
+        `${this.BACKEND_BASE_URL}/api/v1/test/pipeline`
+      ]
 
-      if (!response.ok) {
-        throw new Error(`Pipeline test failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              user_id: `frontend_user_${Date.now()}`,
+              user_message: userMessage,
+              conversation_history: [],
+              user: {
+                user_id: `frontend_user_${Date.now()}`,
+                oauth_tokens: {
+                  google: {
+                    access_token: token,
+                    token_type: 'Bearer'
+                  }
+                },
+                connected_services: ['gmail', 'calendar', 'docs', 'drive']
+              }
+            })
+          })
+          if (response.ok) {
+            return await response.json()
+          }
+        } catch (error) {
+          console.warn(`Failed to test pipeline via ${url}:`, error)
+          continue
+        }
       }
 
-      return await response.json()
+      throw new Error('All pipeline test endpoints failed')
     } catch (error) {
       console.error('Failed to test complete pipeline:', error)
       return null
@@ -511,18 +609,30 @@ class SOHOAASApiService {
         throw new Error('No authentication token available')
       }
 
-      const response = await fetch(`${this.BACKEND_BASE_URL}/api/v1/validate/catalog`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      // Try nginx proxy first, fallback to direct backend
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/validate/catalog`,
+        `${this.BACKEND_BASE_URL}/api/v1/validate/catalog`
+      ]
 
-      if (!response.ok) {
-        throw new Error(`Service validation failed: ${response.status}`)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          if (response.ok) {
+            return await response.json()
+          }
+        } catch (error) {
+          console.warn(`Failed to validate service catalog via ${url}:`, error)
+          continue
+        }
       }
 
-      return await response.json()
+      throw new Error('All validate service catalog endpoints failed')
     } catch (error) {
       console.error('Failed to validate service catalog:', error)
       return null
