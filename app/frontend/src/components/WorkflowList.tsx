@@ -4,6 +4,7 @@ import type { WorkflowOrFile } from '../types'
 import { WorkflowViewer } from './WorkflowViewer'
 import { Button } from './ui'
 import { cn } from '../design-system'
+import { AlertModal } from './AlertModal'
 
 interface WorkflowListProps {
   workflows: WorkflowOrFile[]
@@ -19,10 +20,15 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
   const [executingWorkflow, setExecutingWorkflow] = useState<string | null>(null)
   const [viewerOpen, setViewerOpen] = useState(false)
   const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowOrFile | null>(null)
+  const [showAlert, setShowAlert] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
+  const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('info')
 
   const handleExecuteStep = async (stepId: string, _parameters?: Record<string, any>) => {
     // TODO: Implement individual step execution API
-    alert(`Step execution not yet implemented. Step ID: ${stepId}`)
+    setAlertVariant('info')
+    setAlertMessage(`Step execution not yet implemented. Step ID: ${stepId}`)
+    setShowAlert(true)
   }
 
   const handleExecuteWorkflow = async (workflow: WorkflowOrFile) => {
@@ -163,6 +169,12 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
         }}
         onExecuteStep={handleExecuteStep}
         onExecuteWorkflow={handleExecuteWorkflow}
+      />
+      <AlertModal
+        isOpen={showAlert}
+        message={alertMessage}
+        variant={alertVariant}
+        onClose={() => setShowAlert(false)}
       />
     </div>
   )

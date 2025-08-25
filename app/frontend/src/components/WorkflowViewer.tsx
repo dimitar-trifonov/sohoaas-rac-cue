@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { XMarkIcon, PlayIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { Button, Card } from './ui'
 import type { WorkflowStep, WorkflowOrFile } from '../types'
+import { AlertModal } from './AlertModal'
 
 interface WorkflowViewerProps {
   workflow: WorkflowOrFile | null
@@ -29,6 +30,9 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
   const [stepStates, setStepStates] = useState<StepExecutionState>({})
   const [isExecutingWorkflow, setIsExecutingWorkflow] = useState(false)
   const [userParameters, setUserParameters] = useState<Record<string, any>>({})
+  const [showAlert, setShowAlert] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
+  const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('warning')
 
   // Generate a unique key for this workflow's parameters using workflow_id
   const getParameterStorageKey = (workflowId: string) => {
@@ -195,7 +199,9 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
     }
     
     if (missingParams.length > 0) {
-      alert(`Please fill in required parameters: ${missingParams.join(', ')}`)
+      setAlertVariant('warning')
+      setAlertMessage(`Please fill in required parameters: ${missingParams.join(', ')}`)
+      setShowAlert(true)
       return
     }
 
@@ -796,6 +802,12 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
             )}
           </div>
         </div>
+        <AlertModal
+          isOpen={showAlert}
+          message={alertMessage}
+          variant={alertVariant}
+          onClose={() => setShowAlert(false)}
+        />
       </div>
     </div>
   )

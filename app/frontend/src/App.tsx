@@ -4,6 +4,7 @@ import { AuthStatus, WorkflowCreator, WorkflowList } from './components'
 import { Header, Navigation, Container } from './components/layout'
 import { Button, Card } from './components/ui'
 import { UnauthorizedModal } from './components/UnauthorizedModal'
+import { AlertModal } from './components/AlertModal'
 import { cn, typographyVariants } from './design-system'
 
 
@@ -13,6 +14,9 @@ function App() {
   const { workflows, loadWorkflows } = useWorkflowStore()
   const { activeTab, setActiveTab } = useUIStore()
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false)
+  const [showAlertModal, setShowAlertModal] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
+  const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('info')
 
   useEffect(() => {
     // Initialize all stores on app start
@@ -63,11 +67,15 @@ function App() {
       loadWorkflows()
       
       // Show success message
-      alert('Workflow executed successfully!')
+      setAlertVariant('success')
+      setAlertMessage('Workflow executed successfully!')
+      setShowAlertModal(true)
     } catch (error) {
       console.error('Failed to execute workflow:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      alert(`Failed to execute workflow: ${errorMessage}`)
+      setAlertVariant('error')
+      setAlertMessage(`Failed to execute workflow: ${errorMessage}`)
+      setShowAlertModal(true)
     }
   }
 
@@ -163,6 +171,13 @@ function App() {
       <UnauthorizedModal 
         isOpen={showUnauthorizedModal}
         onClose={handleCloseUnauthorizedModal}
+      />
+      {/* Global Alert Modal */}
+      <AlertModal
+        isOpen={showAlertModal}
+        message={alertMessage}
+        variant={alertVariant}
+        onClose={() => setShowAlertModal(false)}
       />
     </div>
   )

@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { sohoaasApi } from '../services/api'
+import { AlertModal } from './AlertModal'
 
 interface WorkflowCreatorProps {
   onWorkflowCreated: (workflow: any) => void
@@ -9,6 +10,9 @@ interface WorkflowCreatorProps {
 export const WorkflowCreator: React.FC<WorkflowCreatorProps> = ({ onWorkflowCreated }) => {
   const [userMessage, setUserMessage] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [showAlert, setShowAlert] = useState(false)
+  const [alertMessage, setAlertMessage] = useState('')
+  const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('info')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,7 +47,9 @@ export const WorkflowCreator: React.FC<WorkflowCreatorProps> = ({ onWorkflowCrea
     } catch (error) {
       console.error('Failed to create workflow:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      alert(`Failed to create workflow: ${errorMessage}`)
+      setAlertVariant('error')
+      setAlertMessage(`Failed to create workflow: ${errorMessage}`)
+      setShowAlert(true)
     } finally {
       setIsCreating(false)
     }
@@ -81,6 +87,12 @@ export const WorkflowCreator: React.FC<WorkflowCreatorProps> = ({ onWorkflowCrea
           <span>{isCreating ? 'Creating...' : 'Create Workflow'}</span>
         </button>
       </form>
+      <AlertModal
+        isOpen={showAlert}
+        message={alertMessage}
+        variant={alertVariant}
+        onClose={() => setShowAlert(false)}
+      />
     </div>
   )
 }
