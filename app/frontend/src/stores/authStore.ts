@@ -100,29 +100,41 @@ export const useAuthStore = create<AuthStore>()(
         const credential = GoogleAuthProvider.credentialFromResult(result)
         if (credential?.accessToken) {
           try {
-            // Send token to backend for secure storage
-            const backendUrl = import.meta.env.VITE_BACKEND_URL
-            console.log('Storing Google token at:', `${backendUrl}/api/v1/auth/store-google-token`)
-            
-            const response = await fetch(`${backendUrl}/api/v1/auth/store-google-token`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${await user.getIdToken()}`,
-              },
-              body: JSON.stringify({
-                google_access_token: credential.accessToken
-              })
-            })
-            
-            if (response.ok) {
-              const responseData = await response.json()
-              console.log('Google access token stored securely in backend:', responseData)
+            // Proxy-first pattern: try nginx proxy (same-origin) then direct backend URL
+            const PROXY_BASE_URL = import.meta.env.VITE_PROXY_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+            const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081'
+            const urls = [
+              `${PROXY_BASE_URL}/api/v1/auth/store-google-token`,
+              `${BACKEND_BASE_URL}/api/v1/auth/store-google-token`,
+            ]
+
+            let stored = false
+            for (const url of urls) {
+              try {
+                const response = await fetch(url, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${await user.getIdToken()}`,
+                  },
+                  body: JSON.stringify({ google_access_token: credential.accessToken })
+                })
+                if (response.ok) {
+                  // Do not log sensitive data
+                  console.log('Google access token stored securely in backend via', url)
+                  stored = true
+                  break
+                }
+              } catch (e) {
+                console.warn('Store Google token failed via', url, e)
+                continue
+              }
+            }
+
+            if (stored) {
               // Remove from frontend state for security
               set({ googleAccessToken: null })
             } else {
-              const errorText = await response.text()
-              console.error('Failed to store Google token in backend:', response.status, errorText)
               // Fallback: keep in frontend temporarily
               set({ googleAccessToken: credential.accessToken })
             }
@@ -267,6 +279,48 @@ onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
         loading: false,
         error: null
       })
+
+      // After auto sign-in, verify backend has Google token; if missing, auto-logout
+      try {
+        const PROXY_BASE_URL = import.meta.env.VITE_PROXY_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+        const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081'
+        const urls = [
+          `${PROXY_BASE_URL}/api/v1/auth/token-info`,
+          `${BACKEND_BASE_URL}/api/v1/auth/token-info`,
+        ]
+
+        let ok = false
+        for (const url of urls) {
+          try {
+            const resp = await fetch(url, {
+              headers: {
+                'Authorization': `Bearer ${await firebaseUser.getIdToken()}`,
+              }
+            })
+            if (resp.ok) { ok = true; break }
+            if (resp.status === 404 || resp.status === 401) { ok = false; break }
+          } catch (_) {
+            continue
+          }
+        }
+
+        if (!ok) {
+          // Missing Google token in backend; sign out to force user to re-consent and store token
+          await signOut(auth)
+          set({ 
+            isAuthenticated: false,
+            token: null,
+            user: null,
+            firebaseUser: null,
+            loading: false,
+            error: 'MISSING_GOOGLE_TOKEN'
+          })
+          return
+        }
+      } catch (e) {
+        // Non-fatal; keep user signed in
+        console.warn('Token info check failed:', e)
+      }
 
       // Load workflows after successful authentication
       try {

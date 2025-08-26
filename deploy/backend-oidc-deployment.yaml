@@ -1,0 +1,74 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: sohoaas-backend
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      serviceAccountName: backend-sa@sohoaas-dev.iam.gserviceaccount.com
+      containers:
+      - name: backend
+        image: us-central1-docker.pkg.dev/sohoaas-dev/mcp/sohoaas-backend:poctag
+        ports:
+        - containerPort: 8080
+        env:
+        - name: MCP_SERVICE_URL
+          value: http://localhost:8070
+        - name: ENVIRONMENT
+          value: production
+        - name: LOG_LEVEL
+          value: info
+        - name: GENKIT_ENV
+          value: production
+        - name: STORAGE_BACKEND
+          value: gcs
+        - name: GCS_BUCKET
+          value: sohoaas-workflows
+        - name: GCS_PREFIX
+          value: workflows/
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: OPENAI_API_KEY
+              key: latest
+        - name: FIREBASE_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: FIREBASE_PROJECT_ID
+              key: latest
+        - name: FIREBASE_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: FIREBASE_PRIVATE_KEY
+              key: latest
+        - name: FIREBASE_CLIENT_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: FIREBASE_CLIENT_EMAIL
+              key: latest
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+      - name: oidc-proxy
+        image: us-central1-docker.pkg.dev/sohoaas-dev/mcp/oidc-proxy:poctag
+        env:
+        - name: LISTEN_ADDR
+          value: ":8070"
+        - name: UPSTREAM_URL
+          value: https://mcp-backend-958567825339.us-central1.run.app
+        - name: AUDIENCE
+          value: https://mcp-backend-958567825339.us-central1.run.app
+        - name: TIMEOUT_SECONDS
+          value: "30"
+        resources:
+          limits:
+            cpu: 250m
+            memory: 128Mi

@@ -338,8 +338,8 @@ func (h *Handler) GetTokenInfo(c *gin.Context) {
 
 	tokenInfo, err := h.tokenManager.GetTokenInfo(userObj.ID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "No Google token found",
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Google token required",
 			"details": err.Error(),
 		})
 		return
