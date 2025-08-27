@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { PlayIcon, EyeIcon, ClockIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import React, { useEffect, useState } from 'react'
+import { PlayIcon, EyeIcon } from '@heroicons/react/24/outline'
 import type { WorkflowOrFile } from '../types'
 import { WorkflowViewer } from './WorkflowViewer'
 import { Button } from './ui'
@@ -23,6 +23,37 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
   const [showAlert, setShowAlert] = useState(false)
   const [alertMessage, setAlertMessage] = useState('')
   const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('info')
+  // bump to trigger re-render when production flag changes elsewhere
+  const [prodVersion, setProdVersion] = useState(0)
+
+  const getParameterStorageKey = (workflowId: string) => `sohoaas_workflow_params_${workflowId}`
+  const getProductionFlagKey = (workflowId: string) => `sohoaas_workflow_prod_${workflowId}`
+  const isProductionReady = (workflowId: string | undefined) => {
+    if (!workflowId) return false
+    try {
+      return localStorage.getItem(getProductionFlagKey(workflowId)) === 'true'
+    } catch {
+      return false
+    }
+  }
+  const loadSavedParameters = (workflowId: string | undefined): Record<string, any> => {
+    if (!workflowId) return {}
+    try {
+      const raw = localStorage.getItem(getParameterStorageKey(workflowId))
+      return raw ? JSON.parse(raw) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  // Listen for production mode updates coming from WorkflowViewer
+  useEffect(() => {
+    const handler = (_e: Event) => setProdVersion(v => v + 1)
+    window.addEventListener('sohoaas:production-updated', handler as EventListener)
+    return () => {
+      window.removeEventListener('sohoaas:production-updated', handler as EventListener)
+    }
+  }, [])
 
   const handleExecuteStep = async (stepId: string, _parameters?: Record<string, any>) => {
     // TODO: Implement individual step execution API
@@ -42,40 +73,12 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
     }
   }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />
-      case 'error':
-        return <ExclamationCircleIcon className="h-5 w-5 text-red-500" />
-      case 'active':
-        return <ClockIcon className="h-5 w-5 text-blue-500 animate-spin" />
-      default:
-        return <ClockIcon className="h-5 w-5 text-gray-400" />
-    }
-  }
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Completed'
-      case 'error':
-        return 'Error'
-      case 'active':
-      case 'running':
-        return 'Running'
-      default:
-        return 'Draft'
-    }
-  }
-
   if (workflows.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Workflows</h2>
         <div className="text-center py-8">
-          <ClockIcon className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">No workflows created yet</p>
+          <p className="text-gray-500 mb-1">No workflows created yet</p>
           <p className="text-sm text-gray-400 mt-1">Create your first automation workflow above</p>
         </div>
       </div>
@@ -88,14 +91,16 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
       <div className="space-y-3">
         {workflows.map((workflow) => {
           const isExecuting = executingWorkflow === workflow.id
-          const canExecute = workflow.status === 'draft' || workflow.status === 'completed' || workflow.status === 'active'
+          const prodReady = isProductionReady(workflow.id)
+          const canExecute = prodReady
           
           const handleExecute = async () => {
             if (!onExecuteWorkflow || !canExecute) return
             
             setExecutingWorkflow(workflow.id)
             try {
-              await onExecuteWorkflow(workflow)
+              const params = loadSavedParameters(workflow.id)
+              await onExecuteWorkflow({ ...workflow, executionParameters: params } as any)
             } finally {
               setExecutingWorkflow(null)
             }
@@ -110,7 +115,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
           }
           
           return (
-            <div key={workflow.id} className={cn(
+            <div key={`${workflow.id}-${prodVersion}`} className={cn(
               "border border-gray-200 rounded-lg p-4 transition-all duration-200",
               "hover:border-primary-300 hover:shadow-md"
             )}>
@@ -131,6 +136,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
                       onClick={handleExecute}
                       disabled={!canExecute || isExecuting}
                       className="flex items-center space-x-1"
+                      title={prodReady ? 'Run workflow' : 'Run disabled. Open the workflow and click Save after filling required parameters to enable production mode.'}
                     >
                       <PlayIcon className="w-4 h-4" />
                       <span>{isExecuting ? 'Running...' : 'Run'}</span>
@@ -149,9 +155,8 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
                 </div>
                 
                 <div className="flex items-center space-x-2 ml-4 flex-shrink-0">
-                  {getStatusIcon(workflow.status)}
-                  <span className="text-sm font-medium text-gray-700">
-                    {getStatusText(workflow.status)}
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${prodReady ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                    {prodReady ? 'production' : 'draft'}
                   </span>
                 </div>
               </div>

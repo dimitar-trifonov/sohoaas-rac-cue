@@ -33,10 +33,26 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
   const [showAlert, setShowAlert] = useState(false)
   const [alertMessage, setAlertMessage] = useState('')
   const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('warning')
+  const [isProductionReady, setIsProductionReady] = useState(false)
+
+  // Helper: determine if a parameter should be treated as a file input
+  const isFileParam = (paramName: string, def: any): boolean => {
+    if (!def) return false
+    const byType = def.type === 'file'
+    const byValidation = def.validation === 'file_upload'
+    // Name-based fallback (temporary pragmatic rule)
+    const byName = paramName === 'contract_file_content' || paramName === 'contarct_file_content'
+    return Boolean(byType || byValidation || byName)
+  }
 
   // Generate a unique key for this workflow's parameters using workflow_id
   const getParameterStorageKey = (workflowId: string) => {
     return `sohoaas_workflow_params_${workflowId}`
+  }
+
+  // Storage key for production-ready flag
+  const getProductionFlagKey = (workflowId: string) => {
+    return `sohoaas_workflow_prod_${workflowId}`
   }
 
   // Manage localStorage with 5-item limit (LRU cache)
@@ -76,6 +92,51 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
     }
   }
 
+  // Validate that all required user parameters are filled (incl. file types)
+  const computeMissingRequiredParams = (wf: WorkflowOrFile | null, params: Record<string, any>): string[] => {
+    if (!wf) return []
+    const userParams = wf.user_parameters || ('parsed_data' in wf ? wf.parsed_data?.user_parameters : undefined)
+    if (!userParams) return []
+    if (Array.isArray(userParams)) {
+      return userParams
+        .filter(param => {
+          if (!param.required) return false
+          const val = params[param.name]
+          if (isFileParam(param.name, param as any)) {
+            return !val || typeof val !== 'object' || !val.base64
+          }
+          return val === undefined || val === ''
+        })
+        .map(param => param.name)
+    }
+    return Object.entries(userParams)
+      .filter(([paramName, paramDef]) => {
+        const def = paramDef as any
+        if (!def || !def.required) return false
+        const val = params[paramName]
+        if (isFileParam(paramName, def)) {
+          return !val || typeof val !== 'object' || !val.base64
+        }
+        return val === undefined || val === ''
+      })
+      .map(([paramName]) => paramName)
+  }
+
+  const updateProductionFlag = (wf: WorkflowOrFile | null, params: Record<string, any>) => {
+    if (!wf?.id) return
+    const missing = computeMissingRequiredParams(wf, params)
+    const ready = missing.length === 0
+    setIsProductionReady(ready && Object.keys(params).length > 0)
+    try {
+      const prodKey = getProductionFlagKey(wf.id)
+      localStorage.setItem(prodKey, String(ready && Object.keys(params).length > 0))
+      // Notify other components (e.g., WorkflowList) that production readiness changed
+      window.dispatchEvent(new CustomEvent('sohoaas:production-updated', { detail: { workflowId: wf.id, ready } }))
+    } catch (e) {
+      console.warn('Failed to persist production flag:', e)
+    }
+  }
+
   // Clear saved parameters for this workflow
   const clearSavedParameters = () => {
     if (!workflow?.id) return
@@ -83,6 +144,10 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
     try {
       const storageKey = getParameterStorageKey(workflow.id)
       localStorage.removeItem(storageKey)
+      // Clear production-ready flag
+      try {
+        localStorage.setItem(getProductionFlagKey(workflow.id), 'false')
+      } catch {}
       
       // Reset parameters to default values
       const defaultParams: Record<string, any> = {}
@@ -101,6 +166,9 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
         }
       }
       setUserParameters(defaultParams)
+    setIsProductionReady(false)
+    // Notify listeners about reset
+    try { window.dispatchEvent(new CustomEvent('sohoaas:production-updated', { detail: { workflowId: workflow.id, ready: false } })) } catch {}
     } catch (error) {
       console.warn('Failed to clear saved parameters:', error)
     }
@@ -146,6 +214,15 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
         }
       }
       setUserParameters(initialParams)
+
+      // Initialize production-ready flag from storage (do not auto-compute)
+      try {
+        const prodKey = getProductionFlagKey(workflow.id)
+        const storedFlag = localStorage.getItem(prodKey)
+        setIsProductionReady(storedFlag === 'true')
+      } catch (e) {
+        setIsProductionReady(false)
+      }
     }
   }, [workflow])
 
@@ -185,14 +262,26 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
       if (Array.isArray(userParams)) {
         // Legacy array format
         missingParams = userParams
-          .filter(param => param.required && !userParameters[param.name])
+          .filter(param => {
+            if (!param.required) return false
+            const val = userParameters[param.name]
+            if (isFileParam(param.name, param as any)) {
+              return !val || typeof val !== 'object' || !val.base64
+            }
+            return !val
+          })
           .map(param => param.name)
       } else {
         // CUE object format: { paramName: { type, prompt, required } }
         missingParams = Object.entries(userParams)
           .filter(([paramName, paramDef]) => {
             const def = paramDef as any
-            return def && def.required && !userParameters[paramName]
+            if (!def || !def.required) return false
+            const val = userParameters[paramName]
+            if (isFileParam(paramName, def)) {
+              return !val || typeof val !== 'object' || !val.base64
+            }
+            return !val
           })
           .map(([paramName]) => paramName)
       }
@@ -225,7 +314,32 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
     // Save parameters to localStorage whenever they change
     if (workflow?.id) {
       saveParameters(workflow.id, updatedParams)
+      // Edits invalidate production mode until explicitly saved
+      try {
+        const prodKey = getProductionFlagKey(workflow.id)
+        localStorage.setItem(prodKey, 'false')
+      } catch {}
+      setIsProductionReady(false)
+      // Notify listeners about invalidation
+      window.dispatchEvent(new CustomEvent('sohoaas:production-updated', { detail: { workflowId: workflow.id, ready: false } }))
     }
+  }
+
+  const handleSaveParameters = () => {
+    if (!workflow?.id) return
+    const missing = computeMissingRequiredParams(workflow, userParameters)
+    if (missing.length > 0) {
+      setAlertVariant('warning')
+      setAlertMessage(`Please fill in required parameters before enabling production mode: ${missing.join(', ')}`)
+      setShowAlert(true)
+      return
+    }
+    // Persist and mark production-ready
+    saveParameters(workflow.id, userParameters)
+    updateProductionFlag(workflow, userParameters)
+    setAlertVariant('success')
+    setAlertMessage('Parameters saved. Production mode enabled for this workflow.')
+    setShowAlert(true)
   }
 
   const getStatusIcon = (status: string) => {
@@ -266,15 +380,20 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(workflow.status)}`}>
                 {workflow.status}
               </span>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${isProductionReady ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                {isProductionReady ? 'production' : 'draft'}
+              </span>
             </div>
             <div className="flex items-center space-x-2">
               <Button
                 variant="primary"
                 size="sm"
                 onClick={handleExecuteWorkflow}
-                disabled={isExecutingWorkflow}
+                disabled={!isProductionReady || isExecutingWorkflow}
                 className="flex items-center space-x-2"
-                title={workflow.user_parameters && (Array.isArray(workflow.user_parameters) ? workflow.user_parameters.some(p => p.required) : Object.values(workflow.user_parameters).some((p: any) => p.required)) ? 'Fill in required parameters before executing' : 'Execute workflow'}
+                title={!isProductionReady
+                  ? 'Production mode not enabled. Click Save after filling all required parameters.'
+                  : 'Execute workflow'}
               >
                 {isExecutingWorkflow ? (
                   <>
@@ -331,6 +450,13 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
                         <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
                           Auto-saved
                         </span>
+                        <button
+                          onClick={handleSaveParameters}
+                          className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded"
+                          title="Validate and save parameters to enable production mode"
+                        >
+                          Save
+                        </button>
                         <button
                           onClick={clearSavedParameters}
                           className="text-xs text-gray-500 hover:text-red-600 underline"
@@ -403,6 +529,53 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
                               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               required={paramConfig.required}
                             />
+                          )}
+                          
+                          {isFileParam(paramName, paramConfig) && (
+                            <div>
+                              <>
+                                {console.log(`[sohoaas] Rendering file input for parameter '${paramName}' (type=${paramConfig.type}, validation=${paramConfig.validation})`) }
+                              </>
+                              <input
+                                id={paramName}
+                                type="file"
+                                accept={paramConfig.accept || '*/*'}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0]
+                                  if (!file) {
+                                    handleParameterChange(paramName, undefined)
+                                    return
+                                  }
+                                  const maxBytes = 2 * 1024 * 1024 // 2MB
+                                  if (file.size > maxBytes) {
+                                    setAlertVariant('warning')
+                                    setAlertMessage(`File too large for ${paramName}. Max 2MB.`)
+                                    setShowAlert(true)
+                                    // invalidate saved value
+                                    handleParameterChange(paramName, undefined)
+                                    return
+                                  }
+                                  const reader = new FileReader()
+                                  reader.onload = () => {
+                                    const result = reader.result as string
+                                    // result is data URL; strip prefix to get base64 only
+                                    const commaIndex = result.indexOf(',')
+                                    const base64 = commaIndex >= 0 ? result.substring(commaIndex + 1) : result
+                                    handleParameterChange(paramName, {
+                                      name: file.name,
+                                      base64,
+                                      mime_type: file.type || paramConfig.mime_type || 'application/octet-stream',
+                                      size: file.size
+                                    })
+                                  }
+                                  reader.readAsDataURL(file)
+                                }}
+                                className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              />
+                              {userParameters[paramName]?.name && (
+                                <p className="mt-2 text-xs text-gray-500">Selected: {userParameters[paramName].name} ({Math.round((userParameters[paramName].size || 0)/1024)} KB)</p>
+                              )}
+                            </div>
                           )}
                           
                           {paramConfig.type === 'datetime' && (

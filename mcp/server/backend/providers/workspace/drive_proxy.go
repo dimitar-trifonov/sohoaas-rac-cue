@@ -1,7 +1,9 @@
 package workspace
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -147,7 +149,7 @@ func (p *DriveProxy) GetServiceMetadata() ServiceMetadata {
 	return ServiceMetadata{
 		ServiceType: ServiceTypeDrive,
 		DisplayName: "Google Drive",
-		Description: "Store, share, and manage files using Google Drive API",
+		Description: "Store, share, and manage files using Google Drive",
 		Functions: map[string]FunctionMetadata{
 			DriveFunctionUploadFile: {
 				Name:        DriveFunctionUploadFile,
@@ -159,6 +161,20 @@ func (p *DriveProxy) GetServiceMetadata() ServiceMetadata {
 					"parent_id": "root",
 				},
 				RequiredFields: []string{"name", "content"},
+				OutputSchema: &ResponseSchema{
+					Type:        "object",
+					Description: "File upload response",
+					Properties: map[string]PropertySchema{
+						"file_id":    {Type: "string", Description: "Google Drive file ID"},
+						"name":       {Type: "string", Description: "Uploaded file name"},
+						"url":        {Type: "string", Description: "Shareable file URL (web view)"},
+						"mime_type":  {Type: "string", Description: "MIME type of the uploaded file"},
+						"size":       {Type: "integer", Description: "File size in bytes"},
+						"created_at": {Type: "string", Description: "ISO timestamp when created"},
+						"status":     {Type: "string", Description: "Upload status"},
+					},
+					Required: []string{"file_id", "name", "url", "status"},
+				},
 			},
 			DriveFunctionCreateFolder: {
 				Name:        DriveFunctionCreateFolder,
@@ -311,8 +327,43 @@ func (p *DriveProxy) createFolder(ctx context.Context, service *drive.Service, p
 }
 
 func (p *DriveProxy) uploadFile(ctx context.Context, service *drive.Service, payload map[string]interface{}) (map[string]interface{}, error) {
-	name := payload[PayloadFieldName].(string)
-	content := payload[PayloadFieldContent].(string)
+	// Extract name early if present
+	name, _ := payload[PayloadFieldName].(string)
+
+	// Support content being either:
+	// - string (raw base64 or data URL)
+	// - map[string]interface{} with key "base64" (and optionally name, mime_type)
+	var base64Str string
+	if cStr, ok := payload[PayloadFieldContent].(string); ok {
+		// If it's a data URL, strip header
+		if idx := strings.Index(cStr, ","); idx >= 0 && strings.Contains(cStr[:idx], ";base64") {
+			base64Str = cStr[idx+1:]
+		} else {
+			base64Str = cStr
+		}
+	} else if cMap, ok := payload[PayloadFieldContent].(map[string]interface{}); ok {
+		if v, ok := cMap["base64"].(string); ok {
+			base64Str = v
+		}
+		// Allow overriding name and mime_type from the content map if provided
+		if v, ok := cMap["name"].(string); ok && v != "" {
+			name = v
+		}
+		if v, ok := cMap["mime_type"].(string); ok && v != "" {
+			payload["mime_type"] = v
+		}
+	} else {
+		return nil, fmt.Errorf("unsupported content type; expected base64 string or object with base64 field")
+	}
+
+	if base64Str == "" {
+		return nil, fmt.Errorf("empty content provided for upload")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(base64Str)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 content: %w", err)
+	}
 
 	file := &drive.File{
 		Name: name,
@@ -325,11 +376,13 @@ func (p *DriveProxy) uploadFile(ctx context.Context, service *drive.Service, pay
 
 	// Set MIME type if specified
 	if mimeType, ok := payload["mime_type"]; ok && mimeType != "" {
-		file.MimeType = mimeType.(string)
+		if mt, ok := mimeType.(string); ok {
+			file.MimeType = mt
+		}
 	}
 
-	// Convert content string to reader
-	contentReader := strings.NewReader(content)
+	// Use decoded bytes as media
+	contentReader := bytes.NewReader(decoded)
 
 	uploadedFile, err := service.Files.Create(file).Media(contentReader).Do()
 	if err != nil {

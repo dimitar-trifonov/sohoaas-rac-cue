@@ -506,7 +506,16 @@ func (ee *ExecutionEngine) resolveStringParameter(value string, context *Paramet
 	// Handle user parameter references (both pure and mixed with other text)
 	userParamRegex := regexp.MustCompile(`\$\{user\.([^}]+)\}`)
 	if userParamRegex.MatchString(value) {
-		// Replace all user parameter references in the string
+		// If the entire value is exactly a single user ref like ${user.param},
+		// return the underlying value as-is to preserve objects (e.g., file uploads)
+		matches := userParamRegex.FindAllStringSubmatch(value, -1)
+		if len(matches) == 1 && value == fmt.Sprintf("${user.%s}", matches[0][1]) {
+			if userValue, exists := context.UserParameters[matches[0][1]]; exists {
+				return userValue, nil
+			}
+		}
+
+		// Otherwise, perform string interpolation (stringify values) for mixed strings
 		result := userParamRegex.ReplaceAllStringFunc(value, func(match string) string {
 			paramName := userParamRegex.FindStringSubmatch(match)[1]
 			if userValue, exists := context.UserParameters[paramName]; exists {
