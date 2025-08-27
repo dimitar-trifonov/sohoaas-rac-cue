@@ -61,6 +61,18 @@ export const WorkflowCreator: React.FC<WorkflowCreatorProps> = ({ onWorkflowCrea
         <SparklesIcon className="h-6 w-6 text-blue-600" />
         <h2 className="text-lg font-semibold text-gray-900">Create Workflow</h2>
       </div>
+      <p className="text-sm text-gray-600 mb-4">
+        Tip: Draft your intent text with our Custom GPT, then paste it here. You can also ask it what services are supported in the demo.{' '}
+        <a
+          href="https://chatgpt.com/g/g-68ada6bc42ec8191a7a6772db51fb9d2-sohoaas-demo-intent-generator"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          Open SOHOAAS Demo Intent Generator
+        </a>
+        .
+      </p>
       
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

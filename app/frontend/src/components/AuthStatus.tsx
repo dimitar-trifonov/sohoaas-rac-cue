@@ -1,5 +1,5 @@
 import React from 'react'
-import { UserIcon, ArrowRightOnRectangleIcon } from '@heroicons/react/24/outline'
+import { UserIcon, ArrowRightOnRectangleIcon, ArrowLeftOnRectangleIcon } from '@heroicons/react/24/outline'
 import { useAuthStore } from '../stores'
 
 interface AuthStatusProps {
@@ -20,33 +20,26 @@ export const AuthStatus: React.FC<AuthStatusProps> = ({ isAuthenticated, onAuthC
   }
 
   return (
-    <div className="flex items-center space-x-2">
-      {isAuthenticated ? (
-        <div className="flex items-center space-x-2 text-green-600">
-          <UserIcon className="h-5 w-5" />
-          <span className="text-sm font-medium">
-            {user?.email || 'Authenticated'}
-          </span>
-          <button
-            onClick={handleAuthAction}
-            className="text-gray-500 hover:text-gray-700"
-            title="Logout"
-          >
-            <ArrowRightOnRectangleIcon className="h-4 w-4" />
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center space-x-2 text-red-600">
-          <UserIcon className="h-5 w-5" />
-          <span className="text-sm font-medium">Not authenticated</span>
-          <button
-            onClick={handleAuthAction}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-          >
-            Connect Google Workspace
-          </button>
-        </div>
-      )}
+    <div className="flex items-center space-x-3">
+      {/* Status icon only: green when authenticated, red when not */}
+      <UserIcon
+        className={`h-5 w-5 ${isAuthenticated ? 'text-green-600' : 'text-red-600'}`}
+        title={isAuthenticated ? (user?.email || 'Authenticated') : 'Not authenticated'}
+      />
+
+      {/* Auth action icon: logout when authenticated, login when not */}
+      <button
+        onClick={handleAuthAction}
+        className="text-gray-500 hover:text-gray-700"
+        title={isAuthenticated ? 'Logout' : 'Login with Google Workspace'}
+        aria-label={isAuthenticated ? 'Logout' : 'Login'}
+      >
+        {isAuthenticated ? (
+          <ArrowRightOnRectangleIcon className="h-5 w-5" />
+        ) : (
+          <ArrowLeftOnRectangleIcon className="h-5 w-5" />
+        )}
+      </button>
     </div>
   )
 }
