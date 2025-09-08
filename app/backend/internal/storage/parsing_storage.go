@@ -92,3 +92,8 @@ func (ps *parsingStorage) GetStorageType() string {
 func (ps *parsingStorage) GetStorageInfo() map[string]interface{} {
 	return ps.inner.GetStorageInfo()
 }
+
+// DeleteWorkflow passthrough to inner storage
+func (ps *parsingStorage) DeleteWorkflow(userID string, workflowID string) error {
+	return ps.inner.DeleteWorkflow(userID, workflowID)
+}

@@ -571,6 +571,39 @@ func (h *Handler) GetUserWorkflows(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// DeleteWorkflow deletes a specific workflow by ID for the authenticated user
+func (h *Handler) DeleteWorkflow(c *gin.Context) {
+    workflowID := c.Param("id")
+    if workflowID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{
+            "error": "Workflow ID is required",
+        })
+        return
+    }
+
+    user, exists := c.Get("user")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{
+            "error": "User not found in context",
+        })
+        return
+    }
+    userObj := user.(*types.User)
+
+    if err := h.workflowStorage.DeleteWorkflow(userObj.ID, workflowID); err != nil {
+        c.JSON(http.StatusNotFound, gin.H{
+            "error": "Failed to delete workflow",
+            "details": err.Error(),
+        })
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Workflow deleted",
+        "workflow_id": workflowID,
+    })
+}
+
 // GetWorkflow retrieves a specific workflow file by ID
 func (h *Handler) GetWorkflow(c *gin.Context) {
 	workflowID := c.Param("id")

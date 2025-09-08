@@ -47,6 +47,40 @@ class SOHOAASApiService {
     }
   }
 
+  async deleteWorkflow(workflowId: string, authToken?: string): Promise<boolean> {
+    try {
+      const token = authToken || (await this.getAuthToken())?.access_token
+      if (!token) {
+        throw new Error('No authentication token available')
+      }
+
+      const urls = [
+        `${this.PROXY_BASE_URL}/api/v1/workflows/${workflowId}`,
+        `${this.BACKEND_BASE_URL}/api/v1/workflows/${workflowId}`
+      ]
+
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+          if (res.ok) return true
+        } catch (error) {
+          console.warn(`Failed to delete workflow via ${url}:`, error)
+          continue
+        }
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to delete workflow:', error)
+      return false
+    }
+  }
+
   // Get Google API access token for MCP service calls
   async getGoogleAccessToken(): Promise<string | null> {
     try {

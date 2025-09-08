@@ -210,3 +210,19 @@ func (ls *LocalStorage) GetStorageInfo() map[string]interface{} {
 		"created_at":    time.Now().Format(time.RFC3339),
 	}
 }
+
+// DeleteWorkflow removes the workflow directory for the given user and workflow ID
+func (ls *LocalStorage) DeleteWorkflow(userID string, workflowID string) error {
+	// Support combined IDs in the form userID_workflowID
+	cleanWorkflowID := strings.TrimPrefix(workflowID, userID+"_")
+	workflowDir := filepath.Join(ls.workflowsDir, userID, cleanWorkflowID)
+
+	if _, err := os.Stat(workflowDir); os.IsNotExist(err) {
+		return fmt.Errorf("workflow not found: %s", workflowID)
+	}
+
+	if err := os.RemoveAll(workflowDir); err != nil {
+		return fmt.Errorf("failed to delete workflow directory: %v", err)
+	}
+	return nil
+}

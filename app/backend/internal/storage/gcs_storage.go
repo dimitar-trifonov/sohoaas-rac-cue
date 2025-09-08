@@ -252,3 +252,35 @@ func (gcs *GCSStorage) GetStorageInfo() map[string]interface{} {
 		"created_at":       time.Now().Format(time.RFC3339),
 	}
 }
+
+// DeleteWorkflow deletes all objects under the workflow prefix for the given user and workflow ID
+func (gcs *GCSStorage) DeleteWorkflow(userID string, workflowID string) error {
+	cleanWorkflowID := strings.TrimPrefix(workflowID, userID+"_")
+	prefix := fmt.Sprintf("%s%s/%s/", gcs.workflowsPrefix, userID, cleanWorkflowID)
+
+	it := gcs.client.Bucket(gcs.bucketName).Objects(gcs.ctx, &storage.Query{
+		Prefix: prefix,
+	})
+
+	// Track if we found anything to delete
+	found := false
+	for {
+		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to iterate objects for deletion: %v", err)
+		}
+		found = true
+		obj := gcs.client.Bucket(gcs.bucketName).Object(attrs.Name)
+		if err := obj.Delete(gcs.ctx); err != nil {
+			return fmt.Errorf("failed to delete object %s: %v", attrs.Name, err)
+		}
+	}
+
+	if !found {
+		return fmt.Errorf("workflow not found: %s", workflowID)
+	}
+	return nil
+}

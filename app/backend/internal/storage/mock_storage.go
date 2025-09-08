@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -114,4 +115,25 @@ func (m *MockStorage) GetStorageInfo() map[string]interface{} {
 		"type":       "mock",
 		"created_at": time.Now().Format(time.RFC3339),
 	}
+}
+
+// DeleteWorkflow removes a workflow from mock storage
+func (m *MockStorage) DeleteWorkflow(userID string, workflowID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.workflows[workflowID]; !ok {
+		return fmt.Errorf("workflow not found: %s", workflowID)
+	}
+	delete(m.workflows, workflowID)
+	// Optionally clean artifacts for this workflow
+	for key := range m.artifacts {
+		if len(key) >= len(userID)+1+len(workflowID) && key[:len(userID)] == userID {
+			// key format: userID_workflowID_type_filename (best-effort cleanup)
+			// We simply check contains workflowID to avoid over-complication
+			if strings.Contains(key, workflowID) {
+				delete(m.artifacts, key)
+			}
+		}
+	}
+	return nil
 }

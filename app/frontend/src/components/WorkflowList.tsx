@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react'
-import { PlayIcon, EyeIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, EyeIcon, TrashIcon } from '@heroicons/react/24/outline'
 import type { WorkflowOrFile } from '../types'
 import { WorkflowViewer } from './WorkflowViewer'
 import { Button } from './ui'
 import { cn } from '../design-system'
 import { AlertModal } from './AlertModal'
+import { sohoaasApi } from '../services/api'
+import { useWorkflowStore } from '../stores'
 
 interface WorkflowListProps {
   workflows: WorkflowOrFile[]
@@ -25,6 +27,8 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
   const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('info')
   // bump to trigger re-render when production flag changes elsewhere
   const [prodVersion, setProdVersion] = useState(0)
+  // local copy to allow immediate UI updates after deletion
+  const [items, setItems] = useState<WorkflowOrFile[]>(workflows)
 
   const getParameterStorageKey = (workflowId: string) => `sohoaas_workflow_params_${workflowId}`
   const getProductionFlagKey = (workflowId: string) => `sohoaas_workflow_prod_${workflowId}`
@@ -55,6 +59,11 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
     }
   }, [])
 
+  // Sync local items when parent workflows prop changes
+  useEffect(() => {
+    setItems(workflows)
+  }, [workflows])
+
   const handleExecuteStep = async (stepId: string, _parameters?: Record<string, any>) => {
     // TODO: Implement individual step execution API
     setAlertVariant('info')
@@ -73,7 +82,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
     }
   }
 
-  if (workflows.length === 0) {
+  if (items.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Workflows</h2>
@@ -89,7 +98,7 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
     <div className="bg-white rounded-lg shadow p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Workflows</h2>
       <div className="space-y-3">
-        {workflows.map((workflow) => {
+        {items.map((workflow) => {
           const isExecuting = executingWorkflow === workflow.id
           const prodReady = isProductionReady(workflow.id)
           const canExecute = prodReady
@@ -111,6 +120,34 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
             setViewerOpen(true)
             if (onViewWorkflow) {
               onViewWorkflow(workflow)
+            }
+          }
+
+          const handleDelete = async () => {
+            if (!workflow.id) return
+            const confirmMsg = `Delete this workflow? This will remove it from your backend storage. Artifacts outside the workflow folder remain.`
+            if (!window.confirm(confirmMsg)) return
+            const ok = await sohoaasApi.deleteWorkflow(workflow.id)
+            if (ok) {
+              try {
+                localStorage.removeItem(getParameterStorageKey(workflow.id))
+                localStorage.removeItem(getProductionFlagKey(workflow.id))
+              } catch {}
+              setItems(prev => prev.filter(w => w.id !== workflow.id))
+              // Refresh global store so tab counter and parent state update
+              try {
+                const { loadWorkflows } = useWorkflowStore.getState()
+                await loadWorkflows()
+              } catch (e) {
+                console.warn('Failed to refresh workflows after delete:', e)
+              }
+              setAlertVariant('success')
+              setAlertMessage('Workflow deleted')
+              setShowAlert(true)
+            } else {
+              setAlertVariant('error')
+              setAlertMessage('Failed to delete workflow')
+              setShowAlert(true)
             }
           }
           
@@ -158,6 +195,16 @@ export const WorkflowList: React.FC<WorkflowListProps> = ({
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${prodReady ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                     {prodReady ? 'production' : 'draft'}
                   </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDelete}
+                    className="flex items-center space-x-1 border-red-200 text-red-600 hover:bg-red-50"
+                    title="Delete workflow"
+                  >
+                    <TrashIcon className="w-4 h-4" />
+                    <span>Delete</span>
+                  </Button>
                 </div>
               </div>
             </div>

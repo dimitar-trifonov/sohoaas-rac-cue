@@ -2,6 +2,15 @@
 
 This folder contains the **Requirements-as-Code (RaC)** structure for your project, implemented in **CUE** to serve as a **single declarative source of truth**. This structure is ready for use with AI IDEs like **Windsurf** and supports validation, simulation, and code generation.
 
+## ❓ Why RaC/SaC?
+
+**RaC (Requirements‑as‑Code) / SaC (System‑as‑Code)** is the structured, auditable specification layer that turns human intent into deterministic execution for LLM systems. Think of it as the “universal programming language for LLMs,” an incremental evolution of Software 2.0 (“Software 2.0.1”): prompts and context are data; RaC/SaC defines the executable, testable behavior.
+
+SOHOaaS is the “Hello, World” for this paradigm—demonstrating how RaC/SaC makes LLM‑powered systems deterministic, compliant, and production‑ready through:
+- MCP‑first data authority (MCP metadata → CUE workflows → JSON schema)
+- Explicit parameterization and validated dependencies
+- Testable workflows and observable agent behavior
+
 ---
 
 ## 🏗️ Folder Structure

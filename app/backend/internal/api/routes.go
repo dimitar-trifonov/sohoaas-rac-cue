@@ -48,6 +48,7 @@ func SetupRoutes(router *gin.Engine, handler *Handler, authMiddleware gin.Handle
 			// Workflow management
 			protected.GET("/workflows", handler.GetUserWorkflows)
 			protected.GET("/workflows/:id", handler.GetWorkflow)
+			protected.DELETE("/workflows/:id", handler.DeleteWorkflow)
 			
 			// User services
 			protected.GET("/services", handler.GetUserServices)

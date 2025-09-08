@@ -10,6 +10,8 @@ type WorkflowStorage interface {
 	SaveWorkflow(userID string, workflowName string, cueContent string) (*types.WorkflowFile, error)
 	GetWorkflow(userID string, workflowID string) (*types.WorkflowFile, error)
 	ListUserWorkflows(userID string) ([]*types.WorkflowFile, error)
+	// Delete workflow and its folder/prefix for the given user
+	DeleteWorkflow(userID string, workflowID string) error
 	
 	// Artifact management
 	SaveWorkflowArtifact(userID string, workflowID string, artifactType string, filename string, content string) error
