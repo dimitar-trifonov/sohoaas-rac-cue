@@ -34,3 +34,5 @@ test_verification/**
 workflow/**
 app/backend/workflows
 windsurfrules.cue
+docs/plan-service-rac-building.md
+

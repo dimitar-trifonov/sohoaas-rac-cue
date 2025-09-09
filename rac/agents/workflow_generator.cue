@@ -80,7 +80,8 @@ WorkflowGeneratorAgent: {
                 { name: "raw_json_response", type: "string", required: true }, // Raw LLM output
                 { name: "parsed_workflow", type: "object", required: true }, // Parsed JSON workflow
                 { name: "generation_metadata", type: "object" }, // Model info, tokens, etc.
-                { name: "generation_status", type: "string" } // "success", "error", "invalid_json"
+                { name: "generation_status", type: "string" }, // "success", "error", "invalid_json"
+                { name: "decision_log", type: "object", required: false } // Non-authoritative LLM-side decision log
             ]
             metadata: {
                 tags: ["llm", "output", "json_workflow"]

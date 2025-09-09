@@ -7,19 +7,20 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 	"sohoaas-backend/internal/types"
 )
 
 // ExecuteWorkflowGeneratorAgent executes the Workflow Generator Agent with JSON → CUE conversion
 func (g *GenkitService) ExecuteWorkflowGeneratorAgent(input map[string]interface{}) (*types.AgentResponse, error) {
-	log.Printf("[GenkitService] === EXECUTING WORKFLOW GENERATOR AGENT ===")
-	log.Printf("[GenkitService] Input keys: %+v", getInputKeys(input))
-	if userID, exists := input["user_id"]; exists {
-		log.Printf("[GenkitService] User ID: %v", userID)
-	}
-	if validatedIntent, exists := input["validated_intent"]; exists {
-		log.Printf("[GenkitService] Validated intent: %+v", validatedIntent)
-	}
+    log.Printf("[GenkitService] === EXECUTING WORKFLOW GENERATOR AGENT ===")
+    log.Printf("[GenkitService] Input keys: %+v", getInputKeys(input))
+    if userID, exists := input["user_id"]; exists {
+        log.Printf("[GenkitService] User ID: %v", userID)
+    }
+    if validatedIntent, exists := input["validated_intent"]; exists {
+        log.Printf("[GenkitService] Validated intent: %+v", validatedIntent)
+    }
 
 	// Convert map input to typed struct with safe defaults
 	userIntent := getString(input, "user_intent")
@@ -36,29 +37,6 @@ func (g *GenkitService) ExecuteWorkflowGeneratorAgent(input map[string]interface
 		Explanation:         getStringFromMap(validatedIntentMap, "explanation"),
 		Confidence:          getFloat64(validatedIntentMap, "confidence"),
 		WorkflowPattern:     getStringFromMap(validatedIntentMap, "workflow_pattern"),
-	}
-
-	// Validate required user input
-	if userIntent == "" {
-		return nil, fmt.Errorf("user_intent is required for workflow generation")
-	}
-
-	log.Printf("[GenkitService] User input: %s", userIntent)
-
-	if len(validatedIntentMap) == 0 {
-		validatedIntent = ValidatedIntent{
-			IsAutomationRequest: false,
-			RequiredServices:    []string{},
-			CanFulfill:          false,
-			MissingInfo:         []string{},
-			NextAction:          "clarify_request",
-		}
-		log.Printf("[GenkitService] WARNING: Empty validated_intent, using default")
-	}
-
-	if availableServices == "" {
-		availableServices = "No services available"
-		log.Printf("[GenkitService] WARNING: Empty available_services, using default")
 	}
 
 	// Load focused RaC context from workflow-prompt.cue (streamlined for LLM)
@@ -247,6 +225,71 @@ func (g *GenkitService) ExecuteWorkflowGeneratorAgent(input map[string]interface
 			}
 		}
 
+		// Build a minimal audit log and store it under metadata/audit.json (no prompt or runtime logic changes)
+		audit := map[string]interface{}{
+			"version":       "1.0",
+			"generated_at":  time.Now().Format(time.RFC3339),
+			"user_id":       userID,
+			"workflow_id":   workflowID,
+			"workflow_name": workflowName,
+		}
+
+		// Summaries
+		servicesSet := map[string]struct{}{}
+		for _, s := range result.Steps {
+			act := s.Action
+			if dot := strings.Index(act, "."); dot > 0 {
+				servicesSet[act[:dot]] = struct{}{}
+			}
+		}
+		var servicesList []string
+		for k := range servicesSet {
+			servicesList = append(servicesList, k)
+		}
+		var userParamNames []string
+		for k := range result.UserParameters {
+			userParamNames = append(userParamNames, k)
+		}
+		audit["summary"] = map[string]interface{}{
+			"steps_count":    len(result.Steps),
+			"services_used":  servicesList,
+			"user_parameters": userParamNames,
+		}
+
+		// Per-step details with lightweight parameter reference extraction
+		var stepAudits []map[string]interface{}
+		for _, s := range result.Steps {
+			paramKeys := []string{}
+			if s.Parameters != nil {
+				for k := range s.Parameters {
+					paramKeys = append(paramKeys, k)
+				}
+			}
+			userRefs, stepRefs := extractParameterRefsFromMap(s.Parameters)
+			stepAudits = append(stepAudits, map[string]interface{}{
+				"step_id":         s.ID,
+				"action":          s.Action,
+				"parameter_keys":  paramKeys,
+				"parameter_refs":  map[string]interface{}{"user": userRefs, "steps": stepRefs},
+			})
+		}
+		audit["steps"] = stepAudits
+
+		// If LLM provided a decision log, include it non-authoritatively in audit
+		if result.DecisionLog != nil {
+			audit["decision_log"] = result.DecisionLog
+		}
+
+		if auditJSON, err := json.MarshalIndent(audit, "", "  "); err == nil {
+			if saveErr := g.workflowStorage.SaveWorkflowArtifact(userID, workflowID, "metadata", "audit.json", string(auditJSON)); saveErr != nil {
+				log.Printf("[GenkitService] ERROR: Failed to save audit.json: %v", saveErr)
+			} else {
+				log.Printf("[GenkitService] SUCCESS: Saved audit.json")
+			}
+		} else {
+			log.Printf("[GenkitService] ERROR: Failed to marshal audit.json: %v", err)
+		}
+
 		// Convert typed struct to map for output
 		outputMap := make(map[string]interface{})
 		if jsonBytes, err := json.Marshal(result); err == nil {
@@ -357,4 +400,64 @@ func (g *GenkitService) isValidWorkflowJSON(workflowJSON map[string]interface{})
 
 	log.Printf("[GenkitService] Workflow JSON validation passed")
 	return true
+}
+
+// --- Minimal helpers for audit reference extraction (non-intrusive) ---
+
+// extractParameterRefsFromMap scans a parameters map and returns lists of
+// user parameter refs (e.g., ${user.param}) and step output refs
+// (e.g., ${steps.step_id.outputs.field}). Best-effort and safe.
+func extractParameterRefsFromMap(m map[string]interface{}) ([]string, []string) {
+    if m == nil {
+        return nil, nil
+    }
+    userRefRe := regexp.MustCompile(`\$\{user\.([^}]+)\}`)
+    stepRefRe := regexp.MustCompile(`\$\{steps\.([^}]+)\}`)
+    var userRefs []string
+    var stepRefs []string
+
+    var walk func(v interface{})
+    walk = func(v interface{}) {
+        switch val := v.(type) {
+        case string:
+            for _, m := range userRefRe.FindAllStringSubmatch(val, -1) {
+                if len(m) > 1 {
+                    userRefs = append(userRefs, m[1])
+                }
+            }
+            for _, m := range stepRefRe.FindAllStringSubmatch(val, -1) {
+                if len(m) > 1 {
+                    stepRefs = append(stepRefs, m[1])
+                }
+            }
+        case map[string]interface{}:
+            for _, vv := range val {
+                walk(vv)
+            }
+        case []interface{}:
+            for _, vv := range val {
+                walk(vv)
+            }
+        }
+    }
+
+    for _, v := range m {
+        walk(v)
+    }
+
+    return uniqueStrings(userRefs), uniqueStrings(stepRefs)
+}
+
+// uniqueStrings de-duplicates while preserving insertion order.
+func uniqueStrings(in []string) []string {
+    seen := make(map[string]struct{}, len(in))
+    out := make([]string, 0, len(in))
+    for _, s := range in {
+        if _, ok := seen[s]; ok {
+            continue
+        }
+        seen[s] = struct{}{}
+        out = append(out, s)
+    }
+    return out
 }

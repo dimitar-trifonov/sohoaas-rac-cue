@@ -99,6 +99,34 @@ output:
               type: array
               items:
                 type: string
+      decision_log:
+        type: object
+        properties:
+          summary:
+            type: string
+          events:
+            type: array
+            items:
+              type: object
+              properties:
+                event_id:
+                  type: string
+                step_id:
+                  type: string
+                action:
+                  type: string
+                reason_code:
+                  type: string
+                rac_refs:
+                  type: array
+                  items:
+                    type: string
+                inputs_mapped:
+                  type: object
+                validation_flags:
+                  type: array
+                  items:
+                    type: string
     required: ["version", "name", "description", "steps", "user_parameters", "services", "original_intent"]
     additionalProperties: false
 ---
@@ -144,6 +172,7 @@ The following specification defines the system architecture and workflow require
 3. **Service Validation** - Use only available services
 4. **Field Names** - Use: version, name, description, steps, user_parameters, services, original_intent
 5. **CRITICAL: Exact Function Names** - Use ONLY the exact function names listed in available_services. Do NOT modify, pluralize, or guess function names.
+6. Include a concise decision_log with short reason codes and RaC references; no chain-of-thought.
 6. **Preserve Original Intent** - Include original_intent field with the user's exact request
 
 **WORKFLOW STRUCTURE**:

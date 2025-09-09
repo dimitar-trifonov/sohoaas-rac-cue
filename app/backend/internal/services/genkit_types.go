@@ -43,4 +43,23 @@ type WorkflowGeneratorOutput struct {
 	Steps          []types.WorkflowStep           `json:"steps"`
 	UserParameters map[string]types.UserParameter `json:"user_parameters"`
 	Services       map[string]interface{}         `json:"services"`
+	DecisionLog    *DecisionLog                   `json:"decision_log,omitempty"`
+}
+
+// DecisionLog captures a concise, non-authoritative trace emitted by the LLM
+// for debugging. It should contain short reason codes and references to RaC
+// patterns, not chain-of-thought.
+type DecisionLog struct {
+	Summary string             `json:"summary"`
+	Events  []DecisionLogEvent `json:"events"`
+}
+
+type DecisionLogEvent struct {
+	EventID         string                 `json:"event_id"`
+	StepID          string                 `json:"step_id"`
+	Action          string                 `json:"action"`
+	ReasonCode      string                 `json:"reason_code"`
+	RacRefs         []string               `json:"rac_refs,omitempty"`
+	InputsMapped    map[string]interface{} `json:"inputs_mapped,omitempty"`
+	ValidationFlags []string               `json:"validation_flags,omitempty"`
 }
