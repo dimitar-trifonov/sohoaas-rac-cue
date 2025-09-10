@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { XMarkIcon, PlayIcon, CheckCircleIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { Button, Card } from './ui'
 import type { WorkflowStep, WorkflowOrFile } from '../types'
@@ -35,14 +35,58 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
   const [alertVariant, setAlertVariant] = useState<'success' | 'error' | 'info' | 'warning'>('warning')
   const [isProductionReady, setIsProductionReady] = useState(false)
 
+  // Detect user parameters that are referenced by an upload_file action's 'content' parameter
+  const uploadContentLinkedUserParams = useMemo(() => {
+    const linked = new Set<string>()
+    const wf: any = workflow
+    if (!wf) return linked
+    const steps = (wf.parsed_data && wf.parsed_data.steps) || wf.steps || []
+    const userRefRe = /\$\{user\.([^}]+)\}/g
+    steps.forEach((s: any) => {
+      const action: string = s?.action || ''
+      // Heuristic: any action ending with or containing 'upload_file'
+      const isUpload = action.endsWith('upload_file') || action.includes('.upload_file')
+      if (!isUpload) return
+      const params = s?.parameters || {}
+      Object.entries(params).forEach(([paramKey, val]: [string, any]) => {
+        // Only consider the 'content' field for file payload
+        if ((paramKey || '').toLowerCase() !== 'content') return
+        if (typeof val === 'string') {
+          let m
+          while ((m = userRefRe.exec(val)) !== null) {
+            if (m[1]) linked.add(m[1])
+          }
+        }
+        // Scan nested structures too
+        if (val && typeof val === 'object') {
+          const stack = [val]
+          while (stack.length) {
+            const cur = stack.pop()
+            if (typeof cur === 'string') {
+              let m
+              while ((m = userRefRe.exec(cur)) !== null) {
+                if (m[1]) linked.add(m[1])
+              }
+            } else if (Array.isArray(cur)) {
+              cur.forEach(v => stack.push(v))
+            } else if (cur && typeof cur === 'object') {
+              Object.values(cur).forEach(v => stack.push(v))
+            }
+          }
+        }
+      })
+    })
+    return linked
+  }, [workflow])
+
   // Helper: determine if a parameter should be treated as a file input
   const isFileParam = (paramName: string, def: any): boolean => {
     if (!def) return false
     const byType = def.type === 'file'
     const byValidation = def.validation === 'file_upload'
-    // Name-based fallback (temporary pragmatic rule)
-    const byName = paramName === 'contract_file_content' || paramName === 'contarct_file_content'
-    return Boolean(byType || byValidation || byName)
+    // Link-based: parameter is referenced by an upload_file action's 'content' param
+    const byContentLink = uploadContentLinkedUserParams.has(paramName)
+    return Boolean(byType || byValidation || byContentLink)
   }
 
   // Generate a unique key for this workflow's parameters using workflow_id
@@ -482,56 +526,7 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
                           <p className="text-sm text-gray-600 mb-3">{paramConfig.prompt || paramConfig.description}</p>
                           
                           {/* Parameter Input Field */}
-                          {paramConfig.type === 'string' && (
-                            <input
-                              id={paramName}
-                              type="text"
-                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
-                              onChange={(e) => handleParameterChange(paramName, e.target.value)}
-                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required={paramConfig.required}
-                            />
-                          )}
-                          
-                          {paramConfig.type === 'number' && (
-                            <input
-                              id={paramName}
-                              type="number"
-                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
-                              onChange={(e) => handleParameterChange(paramName, parseFloat(e.target.value))}
-                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required={paramConfig.required}
-                            />
-                          )}
-                          
-                          {paramConfig.type === 'boolean' && (
-                            <label className="flex items-center">
-                              <input
-                                id={paramName}
-                                type="checkbox"
-                                checked={userParameters[paramName] ?? paramConfig.default ?? false}
-                                onChange={(e) => handleParameterChange(paramName, e.target.checked)}
-                                className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                              />
-                              <span className="ml-2 text-sm text-gray-600">{paramConfig.prompt || `Enable ${paramName}`}</span>
-                            </label>
-                          )}
-                          
-                          {paramConfig.type === 'email' && (
-                            <input
-                              id={paramName}
-                              type="email"
-                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
-                              onChange={(e) => handleParameterChange(paramName, e.target.value)}
-                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                              required={paramConfig.required}
-                            />
-                          )}
-                          
-                          {isFileParam(paramName, paramConfig) && (
+                          {isFileParam(paramName, paramConfig) ? (
                             <div>
                               <>
                                 {console.log(`[sohoaas] Rendering file input for parameter '${paramName}' (type=${paramConfig.type}, validation=${paramConfig.validation})`) }
@@ -546,10 +541,10 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
                                     handleParameterChange(paramName, undefined)
                                     return
                                   }
-                                  const maxBytes = 2 * 1024 * 1024 // 2MB
+                                  const maxBytes = 1 * 1024 * 1024 // 1MB
                                   if (file.size > maxBytes) {
                                     setAlertVariant('warning')
-                                    setAlertMessage(`File too large for ${paramName}. Max 2MB.`)
+                                    setAlertMessage(`File too large for ${paramName}. Max 1MB.`)
                                     setShowAlert(true)
                                     // invalidate saved value
                                     handleParameterChange(paramName, undefined)
@@ -576,9 +571,60 @@ export const WorkflowViewer: React.FC<WorkflowViewerProps> = ({
                                 <p className="mt-2 text-xs text-gray-500">Selected: {userParameters[paramName].name} ({Math.round((userParameters[paramName].size || 0)/1024)} KB)</p>
                               )}
                             </div>
+                          ) : null}
+
+                          {!isFileParam(paramName, paramConfig) && paramConfig.type === 'string' && (
+                            <input
+                              id={paramName}
+                              type="text"
+                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
+                              onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required={paramConfig.required}
+                            />
                           )}
                           
-                          {paramConfig.type === 'datetime' && (
+                          {!isFileParam(paramName, paramConfig) && paramConfig.type === 'number' && (
+                            <input
+                              id={paramName}
+                              type="number"
+                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
+                              onChange={(e) => handleParameterChange(paramName, parseFloat(e.target.value))}
+                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required={paramConfig.required}
+                            />
+                          )}
+                          
+                          {!isFileParam(paramName, paramConfig) && paramConfig.type === 'boolean' && (
+                            <label className="flex items-center">
+                              <input
+                                id={paramName}
+                                type="checkbox"
+                                checked={userParameters[paramName] ?? paramConfig.default ?? false}
+                                onChange={(e) => handleParameterChange(paramName, e.target.checked)}
+                                className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                              />
+                              <span className="ml-2 text-sm text-gray-600">{paramConfig.prompt || `Enable ${paramName}`}</span>
+                            </label>
+                          )}
+                          
+                          {!isFileParam(paramName, paramConfig) && paramConfig.type === 'email' && (
+                            <input
+                              id={paramName}
+                              type="email"
+                              value={userParameters[paramName] ?? paramConfig.default ?? ''}
+                              onChange={(e) => handleParameterChange(paramName, e.target.value)}
+                              placeholder={paramConfig.prompt || `Enter ${paramName}`}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              required={paramConfig.required}
+                            />
+                          )}
+                          
+                          
+                          
+                          {!isFileParam(paramName, paramConfig) && paramConfig.type === 'datetime' && (
                             <input
                               id={paramName}
                               type="datetime-local"
